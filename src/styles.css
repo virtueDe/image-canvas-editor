@@ -1,0 +1,52 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter,
+    "Segoe UI",
+    "PingFang SC",
+    "Microsoft YaHei",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button:disabled {
+  pointer-events: none;
+}
+
+.input-range::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #22d3ee;
+  appearance: none;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.16);
+}
+
+.input-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #22d3ee;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.16);
+}
+
+.input-range::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(51, 65, 85, 0.7);
+}
