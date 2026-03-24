@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build:artifact": "tsc --noEmit && vite build",
+    "build": "pnpm run build:artifact && node ../../scripts/build-output/mirror-web-dist.mjs && node ../../scripts/build-output/verify-build-output.mjs --package @image-canvas-editor/web-vue",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },

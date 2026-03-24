@@ -3,8 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build:artifact": "vite build && tsc -p tsconfig.build.json",
+    "build": "pnpm run build:artifact && node ../../scripts/build-output/verify-build-output.mjs --package @image-canvas-editor/editor-vue"
+  },
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    }
   },
   "dependencies": {
     "@image-canvas-editor/editor-core": "workspace:*"

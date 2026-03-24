@@ -1,0 +1,63 @@
+version: 1
+name: workspace-build-output
+summary: >
+  约束 image-canvas-editor 在完成“按包结构生成构建产物”后的 CLI 输入/输出行为。
+
+interfaces:
+  - name: root-build
+    type: cli
+    command: pnpm build
+    cwd: repository-root
+    purpose: 一次标准构建产出 3 个 workspace 包的规范产物，并保留根 dist/ 兼容出口
+    requiredPackages:
+      - packageName: "@image-canvas-editor/editor-core"
+        canonicalOutDir: editor/core/dist
+        requiredFiles:
+          - index.js
+          - index.d.ts
+      - packageName: "@image-canvas-editor/editor-vue"
+        canonicalOutDir: editor/vue3/dist
+        requiredFiles:
+          - index.js
+          - index.d.ts
+      - packageName: "@image-canvas-editor/web-vue"
+        canonicalOutDir: apps/web-vue/dist
+        requiredFiles:
+          - index.html
+          - assets/*
+    compatibilityOutput:
+      path: dist
+      mirrors: apps/web-vue/dist
+      mustNotContain:
+        - editor/core/dist/**
+        - editor/vue3/dist/**
+    guarantees:
+      - 任何包只写入自己的 canonicalOutDir
+      - 根 dist/ 始终作为 web 应用兼容出口存在
+      - 任一库包缺少脚本文件或类型声明时，root-build 必须失败
+
+  - name: package-build
+    type: cli
+    commands:
+      - pnpm --filter @image-canvas-editor/editor-core build
+      - pnpm --filter @image-canvas-editor/editor-vue build
+      - pnpm --filter @image-canvas-editor/web-vue build
+    purpose: 单包重建时只影响目标包的 canonicalOutDir
+    guarantees:
+      - editor/core 的单包构建不得清理 editor/vue3/dist、apps/web-vue/dist、dist
+      - editor/vue3 的单包构建不得清理 editor/core/dist、apps/web-vue/dist、dist
+      - web-vue 的单包构建可以刷新 apps/web-vue/dist 与根 dist，但不得触碰两个库包的 dist
+
+  - name: build-failure-signals
+    type: cli
+    purpose: 统一失败判定，避免半成品被误判为成功产物
+    failureConditions:
+      - 库包构建成功退出前未生成脚本文件
+      - 库包构建成功退出前未生成 .d.ts
+      - 应用包规范产物缺少 index.html
+      - compatibilityOutput 与 canonicalOutDir 不一致
+    expectedBehavior:
+      exitCode: non-zero
+      mustNotAdvertiseSuccess: true
+      partialArtifactsMayExist: true
+      followUpRequirement: 失败包不得被标记为 ready

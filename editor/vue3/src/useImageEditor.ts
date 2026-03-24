@@ -163,7 +163,7 @@ export const useImageEditor = () => {
     }
 
     const editor = new ImageCanvasEditor();
-    unsubscribe = editor.subscribe((nextState) => {
+    unsubscribe = editor.subscribe((nextState: EditorState) => {
       state.value = nextState;
     });
     editor.mount(canvasRef.value);

@@ -3,11 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.18.3 <21"
+  },
   "scripts": {
     "dev": "pnpm --filter @image-canvas-editor/web-vue dev",
-    "build": "pnpm --filter @image-canvas-editor/web-vue build",
+    "build": "node scripts/build-output/run-workspace-build.mjs",
     "preview": "pnpm --filter @image-canvas-editor/web-vue preview",
-    "typecheck": "pnpm --filter @image-canvas-editor/web-vue typecheck"
+    "typecheck": "pnpm --filter @image-canvas-editor/web-vue typecheck",
+    "test:contract-build": "node --test tests/contract",
+    "test:integration-build": "node --test tests/integration",
+    "test:unit-build": "node --test tests/unit"
   },
   "devDependencies": {
     "@unocss/reset": "^0.58.9",

@@ -70,7 +70,40 @@ pnpm dev
 pnpm build
 ```
 
-生产构建仍输出到根目录 `dist/`。
+根命令会按 `editor-core → editor-vue → web-vue → 根 dist 镜像 → 产物校验` 的顺序完成全量构建。
+
+### 单包构建
+
+```bash
+pnpm --filter @image-canvas-editor/editor-core build
+pnpm --filter @image-canvas-editor/editor-vue build
+pnpm --filter @image-canvas-editor/web-vue build
+```
+
+单包构建只负责自己的规范产物目录；其中 `web-vue` 会额外刷新根 `dist/` 兼容出口。
+
+### 构建产物目录职责
+
+- `editor/core/dist/`
+  - `@image-canvas-editor/editor-core` 的规范产物目录
+  - 至少包含 `index.js`、`index.cjs`、`index.umd.js` 与 `index.d.ts`
+- `editor/vue3/dist/`
+  - `@image-canvas-editor/editor-vue` 的规范产物目录
+  - 至少包含 `index.js`、`index.cjs`、`index.umd.js` 与 `index.d.ts`
+- `apps/web-vue/dist/`
+  - `@image-canvas-editor/web-vue` 的规范产物目录
+  - 至少包含 `index.html` 与 `assets/`
+- `dist/`
+  - `apps/web-vue/dist/` 的**兼容镜像出口**
+  - 只服务旧流程和兼容消费
+  - **不要**把两个库包的规范产物复制进来
+
+### 根 `dist/` 与 `apps/web-vue/dist/` 的关系
+
+- `apps/web-vue/dist/` 是 web 应用的**规范产物目录**
+- 根 `dist/` 是它的**兼容镜像**
+- 两者文件树应保持一致
+- 根 `dist/` 不是共享垃圾桶，不承载 `editor/core` 和 `editor/vue3` 的库产物
 
 ## 设计原则
 
