@@ -3,11 +3,6 @@ import type { ImageResource, Rect } from './types';
 export const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
-export const round = (value: number, digits = 2): number => {
-  const factor = 10 ** digits;
-  return Math.round(value * factor) / factor;
-};
-
 export const fullImageRect = (image: ImageResource): Rect => ({
   x: 0,
   y: 0,

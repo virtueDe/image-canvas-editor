@@ -32,4 +32,5 @@ coverage/
 # 缓存
 .npm/
 .npm-cache/
+.pnpm-store/
 .eslintcache

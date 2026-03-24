@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repo Doc Maintainer"
+  short_description: "维护仓库文档、贡献规则与 AGENTS 压缩与被动上下文规范"
+  default_prompt: "Use $repo-doc-maintainer to maintain repository docs, contributor guidance, and compressed AGENTS.md rules for this repo."

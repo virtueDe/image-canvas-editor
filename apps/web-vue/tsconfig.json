@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "jsx": "preserve",
+    "types": ["vite/client"],
+    "paths": {
+      "@image-canvas-editor/editor-core": ["../../editor/core/src/index.ts"],
+      "@image-canvas-editor/editor-vue": ["../../editor/vue3/src/index.ts"]
+    }
+  },
+  "include": [
+    "src",
+    "vite.config.ts",
+    "uno.config.ts",
+    "../../editor/core/src",
+    "../../editor/vue3/src"
+  ]
+}

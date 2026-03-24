@@ -12,8 +12,15 @@
   box-sizing: border-box;
 }
 
+html,
 body {
+  min-height: 100%;
   margin: 0;
+  background: #020617;
+}
+
+#app {
+  min-height: 100vh;
 }
 
 button,
@@ -26,6 +33,16 @@ button:disabled {
   pointer-events: none;
 }
 
+.input-range {
+  appearance: none;
+}
+
+.input-range::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(51, 65, 85, 0.7);
+}
+
 .input-range::-webkit-slider-thumb {
   width: 18px;
   height: 18px;
@@ -33,6 +50,7 @@ button:disabled {
   border-radius: 999px;
   background: #22d3ee;
   appearance: none;
+  margin-top: -5px;
   box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.16);
 }
 
