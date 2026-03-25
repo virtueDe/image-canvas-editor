@@ -1,16 +1,21 @@
 import { createProcessedCanvas } from './image-processing';
-import type { CropViewMetrics, EditorState, Rect } from './types';
-import { createCanvas, fullImageRect } from './utils';
+import type { CropViewMetrics, EditorState, PreviewViewMetrics, Rect } from './types';
+import { clamp, createCanvas, fullImageRect } from './utils';
 
 const HANDLE_SIZE = 10;
 
 export class CanvasRenderer {
   private cropViewMetrics: CropViewMetrics | null = null;
+  private previewViewMetrics: PreviewViewMetrics | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
   getCropViewMetrics(): CropViewMetrics | null {
     return this.cropViewMetrics;
+  }
+
+  getPreviewViewMetrics(): PreviewViewMetrics | null {
+    return this.previewViewMetrics;
   }
 
   render(state: EditorState): void {
@@ -20,11 +25,13 @@ export class CanvasRenderer {
 
     if (!state.image) {
       this.cropViewMetrics = null;
+      this.previewViewMetrics = null;
       this.drawEmptyState(ctx, width, height);
       return;
     }
 
     if (state.cropMode) {
+      this.previewViewMetrics = null;
       this.renderCropMode(ctx, width, height, state);
       return;
     }
@@ -33,15 +40,27 @@ export class CanvasRenderer {
     const processed = createProcessedCanvas(state, { maxDimension: 1600 });
 
     if (!processed) {
+      this.previewViewMetrics = null;
       this.drawEmptyState(ctx, width, height);
       return;
     }
 
-    const imageRect = this.fitRect(processed.canvas.width, processed.canvas.height, width, height, 40);
+    const baseRect = this.fitRect(processed.canvas.width, processed.canvas.height, width, height, 40);
+    const imageRect = this.resolvePreviewRect(baseRect, width, height, state.viewport.zoom, state.viewport.offsetX, state.viewport.offsetY);
+    this.previewViewMetrics = {
+      canvasWidth: width,
+      canvasHeight: height,
+      baseDisplayWidth: baseRect.width,
+      baseDisplayHeight: baseRect.height,
+      displayX: imageRect.x,
+      displayY: imageRect.y,
+      displayWidth: imageRect.width,
+      displayHeight: imageRect.height,
+    };
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(processed.canvas, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
-    this.drawInfo(ctx, imageRect, `${processed.canvas.width} × ${processed.canvas.height}`);
+    this.drawInfo(ctx, imageRect, `${processed.canvas.width} × ${processed.canvas.height} · ${Math.round(state.viewport.zoom * 100)}%`);
   }
 
   private prepareCanvas(): {
@@ -136,8 +155,10 @@ export class CanvasRenderer {
 
     ctx.save();
     ctx.fillStyle = 'rgba(2, 6, 23, 0.58)';
-    ctx.fillRect(viewRect.x, viewRect.y, viewRect.width, viewRect.height);
-    ctx.clearRect(screenRect.x, screenRect.y, screenRect.width, screenRect.height);
+    ctx.beginPath();
+    ctx.rect(viewRect.x, viewRect.y, viewRect.width, viewRect.height);
+    ctx.rect(screenRect.x, screenRect.y, screenRect.width, screenRect.height);
+    ctx.fill('evenodd');
     ctx.restore();
 
     ctx.strokeStyle = '#22d3ee';
@@ -213,6 +234,29 @@ export class CanvasRenderer {
       y: metrics.displayY + rect.y * scaleY,
       width: rect.width * scaleX,
       height: rect.height * scaleY,
+    };
+  }
+
+  private resolvePreviewRect(
+    baseRect: Rect,
+    canvasWidth: number,
+    canvasHeight: number,
+    zoom: number,
+    offsetX: number,
+    offsetY: number,
+  ): Rect {
+    const width = baseRect.width * zoom;
+    const height = baseRect.height * zoom;
+    const maxOffsetX = Math.max(0, (width - baseRect.width) / 2);
+    const maxOffsetY = Math.max(0, (height - baseRect.height) / 2);
+    const safeOffsetX = clamp(offsetX, -maxOffsetX, maxOffsetX);
+    const safeOffsetY = clamp(offsetY, -maxOffsetY, maxOffsetY);
+
+    return {
+      x: (canvasWidth - width) / 2 + safeOffsetX,
+      y: (canvasHeight - height) / 2 + safeOffsetY,
+      width,
+      height,
     };
   }
 }

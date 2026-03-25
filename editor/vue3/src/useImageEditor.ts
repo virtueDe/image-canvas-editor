@@ -26,6 +26,7 @@ export const useImageEditor = () => {
   const renderState = computed(() => state.value);
   const hasImage = computed(() => Boolean(renderState.value.image));
   const rotationText = computed(() => `${Math.round(renderState.value.transform.rotation)}°`);
+  const zoomText = computed(() => `${Math.round(renderState.value.viewport.zoom * 100)}%`);
   const canApplyCrop = computed(
     () => Boolean(renderState.value.image && renderState.value.cropMode && (renderState.value.draftCropRect ?? renderState.value.cropRect)),
   );
@@ -138,6 +139,18 @@ export const useImageEditor = () => {
     link.click();
   };
 
+  const zoomIn = (): void => {
+    getEditor().zoomIn();
+  };
+
+  const zoomOut = (): void => {
+    getEditor().zoomOut();
+  };
+
+  const resetViewport = (): void => {
+    getEditor().resetViewport();
+  };
+
   const saveCurrentDraft = (): void => {
     if (!getEditor().saveDraft()) {
       return;
@@ -184,6 +197,7 @@ export const useImageEditor = () => {
     state: renderState,
     hasImage,
     rotationText,
+    zoomText,
     canApplyCrop,
     canCancelCrop,
     imageMetaRows,
@@ -194,6 +208,9 @@ export const useImageEditor = () => {
     updateRotation,
     updateAdjustment,
     applyPreset,
+    zoomIn,
+    zoomOut,
+    resetViewport,
     resetEdits,
     enterCropMode,
     resetCrop,

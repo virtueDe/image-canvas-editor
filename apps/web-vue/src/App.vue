@@ -7,6 +7,7 @@ const {
   state,
   hasImage,
   rotationText,
+  zoomText,
   canApplyCrop,
   canCancelCrop,
   imageMetaRows,
@@ -17,6 +18,9 @@ const {
   updateRotation,
   updateAdjustment,
   applyPreset,
+  zoomIn,
+  zoomOut,
+  resetViewport,
   resetEdits,
   enterCropMode,
   resetCrop,
@@ -193,13 +197,23 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
         </aside>
 
         <section class="panel relative min-h-[560px] overflow-hidden p-3 md:min-h-[720px]">
-          <canvas ref="canvasRef" class="block h-full w-full select-none rounded-4" />
+          <div class="absolute right-6 top-6 z-10 flex items-center gap-2 rounded-3 bg-slate-950/78 px-3 py-2 text-xs text-slate-200 shadow-lg">
+            <span class="min-w-[52px] text-center font-semibold text-cyan-300">{{ zoomText }}</span>
+            <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomOut">缩小</button>
+            <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomIn">放大</button>
+            <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="resetViewport">
+              复位视图
+            </button>
+          </div>
+          <div class="absolute inset-3">
+            <canvas ref="canvasRef" class="block h-full w-full select-none rounded-4" />
+          </div>
           <div
             class="pointer-events-none absolute bottom-6 left-6 max-w-[280px] rounded-3 bg-slate-950/72 px-4 py-3 text-sm text-slate-200 shadow-lg"
           >
             <div class="font-semibold">操作提示</div>
             <div class="mt-1 text-xs leading-5 text-slate-400">
-              上传图片后即可直接编辑。裁剪模式下，画布交互由编辑器 class 自己接管。
+              普通模式下可拖拽移动、滚轮缩放、双击复位视图。裁剪模式下，画布交互由编辑器 class 自己接管。
             </div>
           </div>
         </section>

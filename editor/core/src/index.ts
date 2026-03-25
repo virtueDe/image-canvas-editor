@@ -6,8 +6,10 @@ export type {
   EditorAdjustments,
   EditorState,
   EditorTransform,
+  EditorViewport,
   FilterPreset,
   ImageResource,
+  PreviewViewMetrics,
   Rect,
   SerializableEditorState,
 } from './types';

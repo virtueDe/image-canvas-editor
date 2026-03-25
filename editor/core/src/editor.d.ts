@@ -32,6 +32,9 @@ export declare class ImageCanvasEditor {
     toggleFlip(axis: 'flipX' | 'flipY'): void;
     updateAdjustment(key: 'contrast' | 'exposure' | 'highlights', value: number): void;
     applyPreset(preset: FilterPreset): void;
+    zoomIn(): void;
+    zoomOut(): void;
+    resetViewport(): void;
     saveDraft(): boolean;
     restoreDraft(): Promise<void>;
     exportAsDataUrl(type?: string, quality?: number): string | null;

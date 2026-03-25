@@ -2,7 +2,7 @@ import { createProcessedCanvas } from './image-processing';
 import { createLocalDraftStore, type DraftStore } from './persistence';
 import { CanvasRenderer } from './renderer';
 import { EditorStore } from './store';
-import type { CropViewMetrics, EditorState, FilterPreset, ImageResource, Rect } from './types';
+import type { CropViewMetrics, EditorState, FilterPreset, ImageResource, PreviewViewMetrics, Rect } from './types';
 import {
   approximatelyFullRect,
   clamp,
@@ -21,9 +21,23 @@ type CropInteraction =
   | { mode: 'moving'; originX: number; originY: number; rect: Rect }
   | { mode: 'resizing'; handle: Exclude<CropHandle, 'inside'>; rect: Rect };
 
+type PreviewInteraction =
+  | { mode: 'idle' }
+  | { mode: 'panning'; startClientX: number; startClientY: number; offsetX: number; offsetY: number };
+
 export interface ImageCanvasEditorOptions {
   draftStore?: DraftStore;
 }
+
+const DEFAULT_VIEWPORT = {
+  zoom: 1,
+  offsetX: 0,
+  offsetY: 0,
+} as const;
+
+const MIN_VIEWPORT_ZOOM = 1;
+const MAX_VIEWPORT_ZOOM = 4;
+const VIEWPORT_ZOOM_STEP = 0.2;
 
 export const createInitialEditorState = (): EditorState => ({
   image: null,
@@ -40,6 +54,7 @@ export const createInitialEditorState = (): EditorState => ({
     flipX: false,
     flipY: false,
   },
+  viewport: { ...DEFAULT_VIEWPORT },
   activePreset: 'original',
 });
 
@@ -106,23 +121,46 @@ export class ImageCanvasEditor {
   private readonly draftStore: DraftStore;
   private readonly store = new EditorStore(createInitialEditorState());
   private cropInteraction: CropInteraction = { mode: 'idle' };
+  private previewInteraction: PreviewInteraction = { mode: 'idle' };
   private resizeObserver: ResizeObserver | null = null;
   private readonly onWindowResize = (): void => {
     this.render();
   };
 
   private readonly onCanvasPointerDown = (event: PointerEvent): void => {
-    const canvas = this.canvas;
-    const state = this.store.getState();
-    const metrics = this.renderer?.getCropViewMetrics() ?? null;
-    const draftRect = state.draftCropRect;
-
-    if (!canvas || !state.cropMode || !state.image || !metrics || !draftRect) {
+    if (event.button !== 0) {
       return;
     }
 
-    const point = getPointerOnImage(event, canvas, metrics);
-    const handle = detectHandle(point.x, point.y, draftRect, metrics);
+    const canvas = this.canvas;
+    const state = this.store.getState();
+    const cropMetrics = this.renderer?.getCropViewMetrics() ?? null;
+    const previewMetrics = this.renderer?.getPreviewViewMetrics() ?? null;
+    const draftRect = state.draftCropRect;
+
+    if (!canvas || !state.image) {
+      return;
+    }
+
+    if (!state.cropMode && previewMetrics) {
+      canvas.setPointerCapture(event.pointerId);
+      this.previewInteraction = {
+        mode: 'panning',
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        offsetX: state.viewport.offsetX,
+        offsetY: state.viewport.offsetY,
+      };
+      this.syncCanvasCursor();
+      return;
+    }
+
+    if (!state.cropMode || !cropMetrics || !draftRect) {
+      return;
+    }
+
+    const point = getPointerOnImage(event, canvas, cropMetrics);
+    const handle = detectHandle(point.x, point.y, draftRect, cropMetrics);
 
     canvas.setPointerCapture(event.pointerId);
 
@@ -166,13 +204,25 @@ export class ImageCanvasEditor {
   private readonly onCanvasPointerMove = (event: PointerEvent): void => {
     const canvas = this.canvas;
     const state = this.store.getState();
-    const metrics = this.renderer?.getCropViewMetrics() ?? null;
+    const cropMetrics = this.renderer?.getCropViewMetrics() ?? null;
 
-    if (!canvas || !state.cropMode || !state.image || !metrics || this.cropInteraction.mode === 'idle') {
+    if (!canvas || !state.image) {
       return;
     }
 
-    const point = getPointerOnImage(event, canvas, metrics);
+    if (this.previewInteraction.mode === 'panning' && !state.cropMode) {
+      this.setViewport({
+        offsetX: this.previewInteraction.offsetX + (event.clientX - this.previewInteraction.startClientX),
+        offsetY: this.previewInteraction.offsetY + (event.clientY - this.previewInteraction.startClientY),
+      });
+      return;
+    }
+
+    if (!state.cropMode || !cropMetrics || this.cropInteraction.mode === 'idle') {
+      return;
+    }
+
+    const point = getPointerOnImage(event, canvas, cropMetrics);
 
     if (this.cropInteraction.mode === 'creating') {
       this.setState({
@@ -261,12 +311,40 @@ export class ImageCanvasEditor {
     });
   };
 
+  private readonly onCanvasWheel = (event: WheelEvent): void => {
+    const state = this.store.getState();
+    const metrics = this.renderer?.getPreviewViewMetrics() ?? null;
+
+    if (!state.image || state.cropMode || !metrics) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextZoom = this.clampZoom(
+      state.viewport.zoom + (event.deltaY < 0 ? VIEWPORT_ZOOM_STEP : -VIEWPORT_ZOOM_STEP),
+    );
+
+    this.updateViewportZoom(nextZoom, event.clientX, event.clientY, metrics);
+  };
+
+  private readonly onCanvasDoubleClick = (): void => {
+    const state = this.store.getState();
+
+    if (!state.image || state.cropMode) {
+      return;
+    }
+
+    this.resetViewport();
+  };
+
   private readonly stopCropInteraction = (event: PointerEvent): void => {
     if (this.canvas?.hasPointerCapture(event.pointerId)) {
       this.canvas.releasePointerCapture(event.pointerId);
     }
 
     this.cropInteraction = { mode: 'idle' };
+    this.previewInteraction = { mode: 'idle' };
+    this.syncCanvasCursor();
   };
 
   constructor(options: ImageCanvasEditorOptions = {}) {
@@ -288,6 +366,8 @@ export class ImageCanvasEditor {
     canvas.addEventListener('pointermove', this.onCanvasPointerMove);
     canvas.addEventListener('pointerup', this.stopCropInteraction);
     canvas.addEventListener('pointercancel', this.stopCropInteraction);
+    canvas.addEventListener('wheel', this.onCanvasWheel, { passive: false });
+    canvas.addEventListener('dblclick', this.onCanvasDoubleClick);
 
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => {
@@ -310,10 +390,13 @@ export class ImageCanvasEditor {
     this.canvas.removeEventListener('pointermove', this.onCanvasPointerMove);
     this.canvas.removeEventListener('pointerup', this.stopCropInteraction);
     this.canvas.removeEventListener('pointercancel', this.stopCropInteraction);
+    this.canvas.removeEventListener('wheel', this.onCanvasWheel);
+    this.canvas.removeEventListener('dblclick', this.onCanvasDoubleClick);
     window.removeEventListener('resize', this.onWindowResize);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.cropInteraction = { mode: 'idle' };
+    this.previewInteraction = { mode: 'idle' };
     this.canvas = null;
     this.renderer = null;
   }
@@ -437,6 +520,22 @@ export class ImageCanvasEditor {
     }));
   }
 
+  zoomIn(): void {
+    this.setViewport({
+      zoom: this.clampZoom(this.store.getState().viewport.zoom + VIEWPORT_ZOOM_STEP),
+    });
+  }
+
+  zoomOut(): void {
+    this.setViewport({
+      zoom: this.clampZoom(this.store.getState().viewport.zoom - VIEWPORT_ZOOM_STEP),
+    });
+  }
+
+  resetViewport(): void {
+    this.setViewport({ ...DEFAULT_VIEWPORT });
+  }
+
   saveDraft(): boolean {
     const state = this.store.getState();
 
@@ -458,6 +557,7 @@ export class ImageCanvasEditor {
       cropMode: false,
       adjustments: draft.adjustments,
       transform: draft.transform,
+      viewport: { ...DEFAULT_VIEWPORT },
       activePreset: draft.activePreset,
     });
     this.render();
@@ -478,7 +578,124 @@ export class ImageCanvasEditor {
     this.render();
   }
 
+  private setViewport(nextViewport: Partial<EditorState['viewport']>): void {
+    this.setState((currentState) => ({
+      ...currentState,
+      viewport: this.normalizeViewport({
+        ...currentState.viewport,
+        ...nextViewport,
+      }),
+    }));
+  }
+
+  private normalizeViewport(viewport: EditorState['viewport']): EditorState['viewport'] {
+    const zoom = this.clampZoom(viewport.zoom);
+    const metrics = this.renderer?.getPreviewViewMetrics() ?? null;
+
+    if (!metrics) {
+      return {
+        zoom,
+        offsetX: viewport.offsetX,
+        offsetY: viewport.offsetY,
+      };
+    }
+
+    return this.clampViewportOffsets(
+      {
+        zoom,
+        offsetX: viewport.offsetX,
+        offsetY: viewport.offsetY,
+      },
+      metrics,
+    );
+  }
+
+  private clampViewportOffsets(
+    viewport: EditorState['viewport'],
+    metrics: PreviewViewMetrics,
+  ): EditorState['viewport'] {
+    const width = metrics.baseDisplayWidth * viewport.zoom;
+    const height = metrics.baseDisplayHeight * viewport.zoom;
+    const maxOffsetX = Math.max(0, (width - metrics.baseDisplayWidth) / 2);
+    const maxOffsetY = Math.max(0, (height - metrics.baseDisplayHeight) / 2);
+
+    return {
+      zoom: viewport.zoom,
+      offsetX: clamp(viewport.offsetX, -maxOffsetX, maxOffsetX),
+      offsetY: clamp(viewport.offsetY, -maxOffsetY, maxOffsetY),
+    };
+  }
+
+  private updateViewportZoom(nextZoom: number, clientX?: number, clientY?: number, metrics?: PreviewViewMetrics): void {
+    const activeMetrics = metrics ?? this.renderer?.getPreviewViewMetrics() ?? null;
+
+    if (!activeMetrics) {
+      this.setViewport({
+        zoom: nextZoom,
+      });
+      return;
+    }
+
+    if (clientX === undefined || clientY === undefined) {
+      this.setViewport({
+        zoom: nextZoom,
+      });
+      return;
+    }
+
+    const rect = this.canvas?.getBoundingClientRect();
+
+    if (!rect) {
+      this.setViewport({
+        zoom: nextZoom,
+      });
+      return;
+    }
+
+    const pointerX = clientX - rect.left;
+    const pointerY = clientY - rect.top;
+    const ratioX =
+      activeMetrics.displayWidth > 0 ? (pointerX - activeMetrics.displayX) / activeMetrics.displayWidth : 0.5;
+    const ratioY =
+      activeMetrics.displayHeight > 0 ? (pointerY - activeMetrics.displayY) / activeMetrics.displayHeight : 0.5;
+    const nextWidth = activeMetrics.baseDisplayWidth * nextZoom;
+    const nextHeight = activeMetrics.baseDisplayHeight * nextZoom;
+    const centeredX = (activeMetrics.canvasWidth - nextWidth) / 2;
+    const centeredY = (activeMetrics.canvasHeight - nextHeight) / 2;
+
+    this.setViewport({
+      zoom: nextZoom,
+      offsetX: pointerX - ratioX * nextWidth - centeredX,
+      offsetY: pointerY - ratioY * nextHeight - centeredY,
+    });
+  }
+
+  private clampZoom(zoom: number): number {
+    return Math.round(clamp(zoom, MIN_VIEWPORT_ZOOM, MAX_VIEWPORT_ZOOM) * 100) / 100;
+  }
+
+  private syncCanvasCursor(): void {
+    if (!this.canvas) {
+      return;
+    }
+
+    const state = this.store.getState();
+
+    if (!state.image) {
+      this.canvas.style.cursor = 'default';
+      return;
+    }
+
+    if (state.cropMode) {
+      this.canvas.style.cursor = 'crosshair';
+      return;
+    }
+
+    this.canvas.style.cursor = this.previewInteraction.mode === 'panning' ? 'grabbing' : 'grab';
+  }
+
   private render(): void {
     this.renderer?.render(this.store.getState());
+    this.syncCanvasCursor();
   }
 }

@@ -19,6 +19,12 @@ export interface EditorTransform {
   flipY: boolean;
 }
 
+export interface EditorViewport {
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 export interface ImageResource {
   element: HTMLImageElement;
   width: number;
@@ -34,6 +40,7 @@ export interface EditorState {
   cropMode: boolean;
   adjustments: EditorAdjustments;
   transform: EditorTransform;
+  viewport: EditorViewport;
   activePreset: FilterPreset;
 }
 
@@ -52,4 +59,15 @@ export interface CropViewMetrics {
   displayHeight: number;
   sourceWidth: number;
   sourceHeight: number;
+}
+
+export interface PreviewViewMetrics {
+  canvasWidth: number;
+  canvasHeight: number;
+  baseDisplayWidth: number;
+  baseDisplayHeight: number;
+  displayX: number;
+  displayY: number;
+  displayWidth: number;
+  displayHeight: number;
 }
