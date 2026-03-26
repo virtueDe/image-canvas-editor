@@ -9,8 +9,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (event: 'toggle'): void;
+  (event: 'toggle', nextOpen: boolean): void;
 }>();
+
+const contentId = `inspector-${Math.random().toString(36).slice(2)}`;
 
 const hintClass = computed(() => (props.tone === 'accent' ? 'text-cyan-300' : 'text-slate-400'));
 </script>
@@ -22,11 +24,17 @@ const hintClass = computed(() => (props.tone === 'accent' ? 'text-cyan-300' : 't
         <h2 class="panel-title">{{ props.title }}</h2>
         <p v-if="props.hint" class="text-xs" :class="hintClass">{{ props.hint }}</p>
       </div>
-      <button class="btn-soft px-2 py-1 text-xs" type="button" @click="emit('toggle')">
-        {{ props.open ? '折叠' : '展开' }}
+      <button
+        class="btn-soft px-2 py-1 text-xs"
+        type="button"
+        @click="emit('toggle', !props.open)"
+        :aria-expanded="props.open"
+        :aria-controls="contentId"
+      >
+        {{ props.open ? 'æŠ˜å ' : 'å±•å¼€' }}
       </button>
     </div>
-    <div v-show="props.open">
+    <div v-show="props.open" :id="contentId">
       <slot />
     </div>
   </section>
