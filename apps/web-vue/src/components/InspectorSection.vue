@@ -31,7 +31,7 @@ const hintClass = computed(() => (props.tone === 'accent' ? 'text-cyan-300' : 't
         :aria-expanded="props.open"
         :aria-controls="contentId"
       >
-        {{ props.open ? 'æŠ˜å ' : 'å±•å¼€' }}
+        {{ props.open ? '折叠' : '展开' }}
       </button>
     </div>
     <div v-show="props.open" :id="contentId">
