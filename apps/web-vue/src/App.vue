@@ -68,17 +68,17 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
 </script>
 
 <template>
-  <div
-    class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.16),_transparent_35%),linear-gradient(180deg,#020617_0%,#0f172a_100%)] text-slate-100"
-  >
+  <div class="min-h-screen studio-shell">
     <div class="mx-auto max-w-[1600px] p-4 md:p-6 xl:p-8">
-      <WorkbenchHeader
-        :has-image="hasImage"
-        @file-change="onFileChange"
-        @save-draft="saveCurrentDraft"
-        @restore-draft="restoreCurrentDraft"
-        @download="download"
-      />
+      <div class="studio-header">
+        <WorkbenchHeader
+          :has-image="hasImage"
+          @file-change="onFileChange"
+          @save-draft="saveCurrentDraft"
+          @restore-draft="restoreCurrentDraft"
+          @download="download"
+        />
+      </div>
 
       <main class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside class="space-y-4">
@@ -88,7 +88,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                 重置全部
               </button>
             </div>
-            <dl class="grid grid-cols-[80px_1fr] gap-y-2 text-sm text-slate-300">
+            <dl class="grid grid-cols-[80px_1fr] gap-y-2 text-sm text-[color:var(--studio-ink-muted)]">
               <template v-for="item in imageMetaRows" :key="item.label">
                 <dt>{{ item.label }}</dt>
                 <dd>{{ item.value }}</dd>
@@ -108,10 +108,10 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
               <button class="btn-soft" type="button" :disabled="!hasImage" @click="toggleFlip('flipX')">水平翻转</button>
               <button class="btn-soft" type="button" :disabled="!hasImage" @click="toggleFlip('flipY')">垂直翻转</button>
             </div>
-            <label class="mt-4 block text-sm text-slate-300">
+            <label class="mt-4 block text-sm text-[color:var(--studio-ink-muted)]">
               <span class="mb-2 flex items-center justify-between">
                 <span>任意角度</span>
-                <span class="text-xs text-slate-400">{{ rotationText }}</span>
+                <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ rotationText }}</span>
               </span>
               <input
                 class="input-range"
@@ -139,7 +139,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
               <button class="btn-primary" type="button" :disabled="!canApplyCrop" @click="applyCrop">应用裁剪</button>
               <button class="btn-soft" type="button" :disabled="!canCancelCrop" @click="cancelCrop">取消裁剪</button>
             </div>
-            <p class="mt-3 text-xs leading-5 text-slate-400">
+            <p class="mt-3 text-xs leading-5 text-[color:var(--studio-ink-dim)]">
               裁剪坐标始终基于原图。这样后面再旋转、翻转，状态也不会乱。
             </p>
           </InspectorSection>
@@ -150,7 +150,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             :open="sectionOpen.preset"
             @toggle="(next) => setSectionOpen('preset', next)"
           >
-            <div class="grid grid-cols-3 gap-2">
+            <div class="preset-grid grid grid-cols-2 gap-2 sm:grid-cols-3">
               <button
                 v-for="item in PRESET_OPTIONS"
                 :key="item.value"
@@ -170,10 +170,10 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             @toggle="(next) => setSectionOpen('adjust', next)"
           >
             <div class="space-y-4">
-              <label class="block text-sm text-slate-300">
+              <label class="block text-sm text-[color:var(--studio-ink-muted)]">
                 <span class="mb-2 flex items-center justify-between">
                   <span>对比度</span>
-                  <span class="text-xs text-slate-400">{{ state.adjustments.contrast }}</span>
+                  <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ state.adjustments.contrast }}</span>
                 </span>
                 <input
                   class="input-range"
@@ -186,10 +186,10 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                   @input="updateAdjustment('contrast', getRangeValue($event))"
                 />
               </label>
-              <label class="block text-sm text-slate-300">
+              <label class="block text-sm text-[color:var(--studio-ink-muted)]">
                 <span class="mb-2 flex items-center justify-between">
                   <span>曝光</span>
-                  <span class="text-xs text-slate-400">{{ state.adjustments.exposure }}</span>
+                  <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ state.adjustments.exposure }}</span>
                 </span>
                 <input
                   class="input-range"
@@ -202,10 +202,10 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                   @input="updateAdjustment('exposure', getRangeValue($event))"
                 />
               </label>
-              <label class="block text-sm text-slate-300">
+              <label class="block text-sm text-[color:var(--studio-ink-muted)]">
                 <span class="mb-2 flex items-center justify-between">
                   <span>高光</span>
-                  <span class="text-xs text-slate-400">{{ state.adjustments.highlights }}</span>
+                  <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ state.adjustments.highlights }}</span>
                 </span>
                 <input
                   class="input-range"
@@ -223,15 +223,18 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
         </aside>
 
         <section class="panel flex min-h-[560px] flex-col overflow-hidden md:min-h-[720px]">
-          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--studio-border)] px-4 py-3">
             <div>
               <h2 class="panel-title">编辑工作台</h2>
-              <p class="text-xs text-slate-400">
+              <p class="text-xs text-[color:var(--studio-ink-dim)]">
                 {{ hasImage ? (isCropMode ? '裁剪模式' : '普通模式') : '等待上传图片' }}
               </p>
             </div>
-            <div class="flex items-center gap-2 rounded-3 bg-slate-950/60 px-3 py-2 text-xs text-slate-200 shadow-lg">
-              <span class="min-w-[52px] text-center font-semibold text-cyan-300">{{ zoomText }}</span>
+            <div class="studio-readout flex w-full flex-wrap items-center gap-2 px-3 py-2 text-xs sm:w-auto">
+              <div class="studio-readout__text">
+                <span class="studio-readout__label">ç¼©æ”¾</span>
+                <span class="studio-readout__value">{{ zoomText }}</span>
+              </div>
               <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomOut">缩小</button>
               <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomIn">放大</button>
               <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="resetViewport">
@@ -245,19 +248,19 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             </div>
             <div
               v-if="!hasImage"
-              class="absolute inset-3 flex items-center justify-center rounded-4 border border-dashed border-white/10 bg-slate-950/40 text-center text-sm text-slate-300"
+              class="stage-empty absolute inset-3 flex items-center justify-center rounded-4 text-center text-sm"
             >
               <div class="max-w-[320px]">
-                <div class="text-base font-semibold text-slate-100">上传图片开始编辑</div>
-                <div class="mt-2 text-xs leading-5 text-slate-400">使用上方按钮上传图片开始编辑。</div>
+                <div class="text-base font-semibold text-[color:var(--studio-ink)]">上传图片开始编辑</div>
+                <div class="mt-2 text-xs leading-5 text-[color:var(--studio-ink-dim)]">使用上方按钮上传图片开始编辑。</div>
               </div>
             </div>
             <div
               v-else
-              class="pointer-events-none absolute bottom-6 left-6 max-w-[280px] rounded-3 bg-slate-950/72 px-4 py-3 text-sm text-slate-200 shadow-lg"
+              class="stage-hint pointer-events-none absolute bottom-6 left-6 max-w-[280px] rounded-3 px-4 py-3 text-sm"
             >
-              <div class="font-semibold">{{ isCropMode ? '裁剪模式' : '普通模式' }}</div>
-              <div class="mt-1 text-xs leading-5 text-slate-400">{{ stageHint }}</div>
+              <div class="stage-hint__title">{{ isCropMode ? '裁剪模式' : '普通模式' }}</div>
+              <div class="mt-1 text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ stageHint }}</div>
             </div>
           </div>
         </section>
