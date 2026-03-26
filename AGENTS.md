@@ -8,7 +8,6 @@
 |Boundaries:browser UI/file input/alert only in apps/web-vue|reactive bridge only in editor/vue3|Canvas logic/state/draft/export only in editor/core
 |Change Rules:small reversible patches|do not edit dist directly|do not add abstractions/state libs without a current pain point
 |Dev:pnpm install|pnpm dev|pnpm build|pnpm preview|pnpm typecheck
-|Verify:before commit run pnpm typecheck|manual smoke={upload,rotate,flip,crop,preset,adjust,save-draft,restore-draft,export}
 |Tests:prefer editor/core/src/*.test.ts for new unit tests; keep UI-free where possible
 |Commits:Conventional Commits type(scope): summary|Scopes:{editor-core,editor-vue,web-vue}
 |PR:include motivation, impact, validation; UI changes require screenshot/video; state/draft/export changes require compatibility+rollback note
