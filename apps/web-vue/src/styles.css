@@ -159,12 +159,3 @@ button:disabled {
 .inspector-section__body {
   margin-top: 12px;
 }
-
-/* 响应式 */
-@media (max-width: 768px) {
-  .stage-hint {
-    left: 16px;
-    right: 16px;
-    max-width: none;
-  }
-}

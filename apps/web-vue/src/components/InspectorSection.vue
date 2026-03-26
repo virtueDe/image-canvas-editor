@@ -18,23 +18,24 @@ const hintClass = computed(() => (props.tone === 'accent' ? 'text-cyan-300' : 't
 </script>
 
 <template>
-  <section class="panel p-4">
+  <section :class="['inspector-section', { 'is-open': props.open, 'is-active': props.tone === 'accent' }]">
     <div class="mb-4 flex items-center justify-between">
       <div>
-        <h2 class="panel-title">{{ props.title }}</h2>
-        <p v-if="props.hint" class="text-xs" :class="hintClass">{{ props.hint }}</p>
+        <h2 class="inspector-section__title">{{ props.title }}</h2>
+        <p v-if="props.hint" class="inspector-section__hint" :class="hintClass">{{ props.hint }}</p>
       </div>
       <button
-        class="btn-soft px-2 py-1 text-xs"
+        class="inspector-section__trigger"
         type="button"
         @click="emit('toggle', !props.open)"
         :aria-expanded="props.open"
         :aria-controls="contentId"
       >
-        {{ props.open ? '折叠' : '展开' }}
+        <span>{{ props.open ? '折叠' : '展开' }}</span>
+        <span class="inspector-section__chevron" aria-hidden="true">{{ props.open ? '▾' : '▸' }}</span>
       </button>
     </div>
-    <div v-show="props.open" :id="contentId">
+    <div v-show="props.open" :id="contentId" class="inspector-section__body">
       <slot />
     </div>
   </section>
