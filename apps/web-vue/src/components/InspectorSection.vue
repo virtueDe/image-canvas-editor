@@ -14,7 +14,7 @@ const emit = defineEmits<{
 
 const contentId = `inspector-${Math.random().toString(36).slice(2)}`;
 
-const hintClass = computed(() => (props.tone === 'accent' ? 'text-cyan-300' : 'text-slate-400'));
+const hintClass = computed(() => (props.tone === 'accent' ? 'inspector-section__hint--accent' : ''));
 </script>
 
 <template>

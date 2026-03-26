@@ -12,7 +12,6 @@
   --studio-surface-1: #1c1814;
   --studio-surface-2: #231f1b;
   --studio-surface-3: #2a261f;
-  --studio-surface-3-alpha: rgba(42, 38, 31, 0.86);
   --studio-border: rgba(255, 239, 220, 0.08);
   --studio-ink: #f5efe7;
   --studio-ink-muted: #d4c8bb;
@@ -99,7 +98,6 @@ button:disabled {
   border-radius: 16px;
   background: var(--studio-surface-1);
   box-shadow: var(--studio-shadow-soft);
-  backdrop-filter: blur(16px);
   padding: 16px;
 }
 
@@ -115,8 +113,7 @@ button:disabled {
 .inspector-section__title {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--studio-ink-muted);
 }
 
@@ -124,6 +121,10 @@ button:disabled {
   margin-top: 4px;
   font-size: 12px;
   color: var(--studio-ink-dim);
+}
+
+.inspector-section__hint--accent {
+  color: var(--studio-accent);
 }
 
 .inspector-section__trigger {
