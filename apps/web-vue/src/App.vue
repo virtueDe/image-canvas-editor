@@ -249,7 +249,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             >
               <div class="max-w-[320px]">
                 <div class="text-base font-semibold text-slate-100">上传图片开始编辑</div>
-                <div class="mt-2 text-xs leading-5 text-slate-400">拖拽图片到画布，或使用上方按钮上传。</div>
+                <div class="mt-2 text-xs leading-5 text-slate-400">使用上方按钮上传图片开始编辑。</div>
               </div>
             </div>
             <div
