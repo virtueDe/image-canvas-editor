@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkbenchHeader from './components/WorkbenchHeader.vue';
 import { useImageEditor } from '@image-canvas-editor/editor-vue';
 
 const {
@@ -39,24 +40,13 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
     class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.16),_transparent_35%),linear-gradient(180deg,#020617_0%,#0f172a_100%)] text-slate-100"
   >
     <div class="mx-auto max-w-[1600px] p-4 md:p-6 xl:p-8">
-      <header class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p class="text-sm tracking-[0.3em] text-cyan-300/80 uppercase">Canvas Image Editor</p>
-          <h1 class="mt-2 text-3xl font-bold md:text-4xl">在线图片编辑器</h1>
-          <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-            用最少的概念做最有用的事：Vue 只做 UI，Canvas + TypeScript 内核只做编辑。
-          </p>
-        </div>
-        <div class="panel flex flex-wrap items-center gap-2 px-4 py-3">
-          <label class="btn-primary cursor-pointer">
-            <input class="hidden" type="file" accept="image/*" @change="onFileChange" />
-            选择图片
-          </label>
-          <button class="btn-soft" type="button" :disabled="!hasImage" @click="saveCurrentDraft">保存草稿</button>
-          <button class="btn-soft" type="button" @click="restoreCurrentDraft">恢复草稿</button>
-          <button class="btn-primary" type="button" :disabled="!hasImage" @click="download">下载 PNG</button>
-        </div>
-      </header>
+      <WorkbenchHeader
+        :has-image="hasImage"
+        :on-file-change="onFileChange"
+        :save-current-draft="saveCurrentDraft"
+        :restore-current-draft="restoreCurrentDraft"
+        :download="download"
+      />
 
       <main class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside class="space-y-4">
