@@ -243,7 +243,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             </div>
           </div>
           <div class="relative flex-1 p-3">
-            <div class="absolute inset-3">
+            <div class="editor-stage absolute inset-3">
               <canvas ref="canvasRef" class="block h-full w-full select-none rounded-4" />
             </div>
             <div
