@@ -1,11 +1,19 @@
 <script setup lang="ts">
 const props = defineProps<{
   hasImage: boolean;
-  onFileChange: (event: Event) => void;
-  saveCurrentDraft: () => void;
-  restoreCurrentDraft: () => void;
-  download: () => void;
 }>();
+
+const emit = defineEmits<{
+  (event: 'fileChange', payload: Event): void;
+  (event: 'saveDraft'): void;
+  (event: 'restoreDraft'): void;
+  (event: 'download'): void;
+}>();
+
+const handleFileChange = (event: Event) => emit('fileChange', event);
+const saveDraft = () => emit('saveDraft');
+const restoreDraft = () => emit('restoreDraft');
+const downloadImage = () => emit('download');
 </script>
 
 <template>
@@ -19,14 +27,12 @@ const props = defineProps<{
     </div>
     <div class="panel flex flex-wrap items-center gap-2 px-4 py-3">
       <label class="btn-primary cursor-pointer">
-        <input class="hidden" type="file" accept="image/*" @change="props.onFileChange" />
+        <input class="hidden" type="file" accept="image/*" @change="handleFileChange" />
         选择图片
       </label>
-      <button class="btn-soft" type="button" :disabled="!props.hasImage" @click="props.saveCurrentDraft">
-        保存草稿
-      </button>
-      <button class="btn-soft" type="button" @click="props.restoreCurrentDraft">恢复草稿</button>
-      <button class="btn-primary" type="button" :disabled="!props.hasImage" @click="props.download">
+      <button class="btn-soft" type="button" :disabled="!props.hasImage" @click="saveDraft">保存草稿</button>
+      <button class="btn-soft" type="button" @click="restoreDraft">恢复草稿</button>
+      <button class="btn-primary" type="button" :disabled="!props.hasImage" @click="downloadImage">
         下载 PNG
       </button>
     </div>

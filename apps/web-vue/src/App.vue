@@ -42,10 +42,10 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
     <div class="mx-auto max-w-[1600px] p-4 md:p-6 xl:p-8">
       <WorkbenchHeader
         :has-image="hasImage"
-        :on-file-change="onFileChange"
-        :save-current-draft="saveCurrentDraft"
-        :restore-current-draft="restoreCurrentDraft"
-        :download="download"
+        @file-change="onFileChange"
+        @save-draft="saveCurrentDraft"
+        @restore-draft="restoreCurrentDraft"
+        @download="download"
       />
 
       <main class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
