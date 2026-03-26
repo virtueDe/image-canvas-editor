@@ -21,12 +21,11 @@ export class CanvasRenderer {
   render(state: EditorState): void {
     const { width, height, ctx } = this.prepareCanvas();
 
-    this.drawBackground(ctx, width, height);
+    // this.drawBackground(ctx, width, height);
 
     if (!state.image) {
       this.cropViewMetrics = null;
       this.previewViewMetrics = null;
-      this.drawEmptyState(ctx, width, height);
       return;
     }
 
@@ -41,7 +40,6 @@ export class CanvasRenderer {
 
     if (!processed) {
       this.previewViewMetrics = null;
-      this.drawEmptyState(ctx, width, height);
       return;
     }
 
@@ -117,16 +115,6 @@ export class CanvasRenderer {
     ctx.fillRect(0, 0, width, height);
   }
 
-  private drawEmptyState(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-    ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
-    ctx.font = '600 24px "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('上传一张图片开始编辑', width / 2, height / 2 - 8);
-    ctx.font = '400 14px "Segoe UI", sans-serif';
-    ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
-    ctx.fillText('支持旋转、裁剪、滤镜、翻转、曝光、高光与下载', width / 2, height / 2 + 22);
-  }
-
   private renderCropMode(
     ctx: CanvasRenderingContext2D,
     width: number,
@@ -134,7 +122,6 @@ export class CanvasRenderer {
     state: EditorState,
   ): void {
     if (!state.image) {
-      this.drawEmptyState(ctx, width, height);
       return;
     }
 
