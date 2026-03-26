@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { computed, reactive, watch } from 'vue';
 import WorkbenchHeader from './components/WorkbenchHeader.vue';
+import InspectorSection from './components/InspectorSection.vue';
 import { useImageEditor } from '@image-canvas-editor/editor-vue';
 
 const {
@@ -32,6 +34,36 @@ const {
   restoreCurrentDraft,
 } = useImageEditor();
 
+type SectionId = 'meta' | 'transform' | 'crop' | 'preset' | 'adjust';
+
+const sectionOpen = reactive<Record<SectionId, boolean>>({
+  meta: true,
+  transform: true,
+  crop: false,
+  preset: false,
+  adjust: true,
+});
+
+const isCropMode = computed(() => Boolean(state.value.cropMode));
+const stageHint = computed(() =>
+  isCropMode.value
+    ? '裁剪模式：拖拽裁剪框，拖动内部移动，四角缩放。'
+    : '普通模式：拖拽移动画布，滚轮缩放，双击复位视图。',
+);
+
+const setSectionOpen = (section: SectionId, nextOpen: boolean): void => {
+  sectionOpen[section] = nextOpen;
+};
+
+watch(
+  () => state.value.cropMode,
+  (next) => {
+    if (next) {
+      sectionOpen.crop = true;
+    }
+  },
+);
+
 const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
 </script>
 
@@ -50,9 +82,8 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
 
       <main class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside class="space-y-4">
-          <section class="panel p-4">
-            <div class="mb-4 flex items-center justify-between">
-              <h2 class="panel-title">图片信息</h2>
+          <InspectorSection title="图片信息" :open="sectionOpen.meta" @toggle="(next) => setSectionOpen('meta', next)">
+            <div class="mb-3 flex items-center justify-end">
               <button class="btn-soft px-2 py-1 text-xs" type="button" :disabled="!hasImage" @click="resetEdits">
                 重置全部
               </button>
@@ -63,13 +94,14 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                 <dd>{{ item.value }}</dd>
               </template>
             </dl>
-          </section>
+          </InspectorSection>
 
-          <section class="panel p-4">
-            <div class="mb-4 flex items-center justify-between">
-              <h2 class="panel-title">旋转与翻转</h2>
-              <span class="text-xs text-slate-400">{{ rotationText }}</span>
-            </div>
+          <InspectorSection
+            title="旋转与翻转"
+            :hint="`当前角度 ${rotationText}`"
+            :open="sectionOpen.transform"
+            @toggle="(next) => setSectionOpen('transform', next)"
+          >
             <div class="grid grid-cols-2 gap-2">
               <button class="btn-soft" type="button" :disabled="!hasImage" @click="rotateBy(-90)">左转 90°</button>
               <button class="btn-soft" type="button" :disabled="!hasImage" @click="rotateBy(90)">右转 90°</button>
@@ -92,13 +124,15 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                 @input="updateRotation(getRangeValue($event))"
               />
             </label>
-          </section>
+          </InspectorSection>
 
-          <section class="panel p-4">
-            <div class="mb-4 flex items-center justify-between">
-              <h2 class="panel-title">裁剪</h2>
-              <span class="text-xs text-slate-400">拖拽框选，拖动内部移动，四角缩放</span>
-            </div>
+          <InspectorSection
+            title="裁剪"
+            hint="拖拽框选，拖动内部移动，四角缩放"
+            :tone="isCropMode ? 'accent' : 'muted'"
+            :open="sectionOpen.crop"
+            @toggle="(next) => setSectionOpen('crop', next)"
+          >
             <div class="grid grid-cols-2 gap-2">
               <button class="btn-soft" type="button" :disabled="!hasImage" @click="enterCropMode">进入裁剪</button>
               <button class="btn-soft" type="button" :disabled="!hasImage" @click="resetCrop">清除裁剪</button>
@@ -108,13 +142,14 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             <p class="mt-3 text-xs leading-5 text-slate-400">
               裁剪坐标始终基于原图。这样后面再旋转、翻转，状态也不会乱。
             </p>
-          </section>
+          </InspectorSection>
 
-          <section class="panel p-4">
-            <div class="mb-4 flex items-center justify-between">
-              <h2 class="panel-title">滤镜预设</h2>
-              <span class="text-xs text-slate-400">先预设，再微调</span>
-            </div>
+          <InspectorSection
+            title="滤镜预设"
+            hint="先预设，再微调"
+            :open="sectionOpen.preset"
+            @toggle="(next) => setSectionOpen('preset', next)"
+          >
             <div class="grid grid-cols-3 gap-2">
               <button
                 v-for="item in PRESET_OPTIONS"
@@ -126,13 +161,14 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                 {{ item.label }}
               </button>
             </div>
-          </section>
+          </InspectorSection>
 
-          <section class="panel p-4">
-            <div class="mb-4 flex items-center justify-between">
-              <h2 class="panel-title">参数调节</h2>
-              <span class="text-xs text-slate-400">-100 ~ 100</span>
-            </div>
+          <InspectorSection
+            title="参数调节"
+            hint="-100 ~ 100"
+            :open="sectionOpen.adjust"
+            @toggle="(next) => setSectionOpen('adjust', next)"
+          >
             <div class="space-y-4">
               <label class="block text-sm text-slate-300">
                 <span class="mb-2 flex items-center justify-between">
@@ -183,27 +219,45 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                 />
               </label>
             </div>
-          </section>
+          </InspectorSection>
         </aside>
 
-        <section class="panel relative min-h-[560px] overflow-hidden p-3 md:min-h-[720px]">
-          <div class="absolute right-6 top-6 z-10 flex items-center gap-2 rounded-3 bg-slate-950/78 px-3 py-2 text-xs text-slate-200 shadow-lg">
-            <span class="min-w-[52px] text-center font-semibold text-cyan-300">{{ zoomText }}</span>
-            <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomOut">缩小</button>
-            <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomIn">放大</button>
-            <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="resetViewport">
-              复位视图
-            </button>
+        <section class="panel flex min-h-[560px] flex-col overflow-hidden md:min-h-[720px]">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+            <div>
+              <h2 class="panel-title">编辑工作台</h2>
+              <p class="text-xs text-slate-400">
+                {{ hasImage ? (isCropMode ? '裁剪模式' : '普通模式') : '等待上传图片' }}
+              </p>
+            </div>
+            <div class="flex items-center gap-2 rounded-3 bg-slate-950/60 px-3 py-2 text-xs text-slate-200 shadow-lg">
+              <span class="min-w-[52px] text-center font-semibold text-cyan-300">{{ zoomText }}</span>
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomOut">缩小</button>
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomIn">放大</button>
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="resetViewport">
+                复位视图
+              </button>
+            </div>
           </div>
-          <div class="absolute inset-3">
-            <canvas ref="canvasRef" class="block h-full w-full select-none rounded-4" />
-          </div>
-          <div
-            class="pointer-events-none absolute bottom-6 left-6 max-w-[280px] rounded-3 bg-slate-950/72 px-4 py-3 text-sm text-slate-200 shadow-lg"
-          >
-            <div class="font-semibold">操作提示</div>
-            <div class="mt-1 text-xs leading-5 text-slate-400">
-              普通模式下可拖拽移动、滚轮缩放、双击复位视图。裁剪模式下，画布交互由编辑器 class 自己接管。
+          <div class="relative flex-1 p-3">
+            <div class="absolute inset-3">
+              <canvas ref="canvasRef" class="block h-full w-full select-none rounded-4" />
+            </div>
+            <div
+              v-if="!hasImage"
+              class="absolute inset-3 flex items-center justify-center rounded-4 border border-dashed border-white/10 bg-slate-950/40 text-center text-sm text-slate-300"
+            >
+              <div class="max-w-[320px]">
+                <div class="text-base font-semibold text-slate-100">上传图片开始编辑</div>
+                <div class="mt-2 text-xs leading-5 text-slate-400">拖拽图片到画布，或使用上方按钮上传。</div>
+              </div>
+            </div>
+            <div
+              v-else
+              class="pointer-events-none absolute bottom-6 left-6 max-w-[280px] rounded-3 bg-slate-950/72 px-4 py-3 text-sm text-slate-200 shadow-lg"
+            >
+              <div class="font-semibold">{{ isCropMode ? '裁剪模式' : '普通模式' }}</div>
+              <div class="mt-1 text-xs leading-5 text-slate-400">{{ stageHint }}</div>
             </div>
           </div>
         </section>
