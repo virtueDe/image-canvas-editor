@@ -232,7 +232,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             </div>
             <div class="studio-readout flex w-full flex-wrap items-center gap-2 px-3 py-2 text-xs sm:w-auto">
               <div class="studio-readout__text">
-                <span class="studio-readout__label">ç¼©æ”¾</span>
+                <span class="studio-readout__label">缩放</span>
                 <span class="studio-readout__value">{{ zoomText }}</span>
               </div>
               <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomOut">缩小</button>
