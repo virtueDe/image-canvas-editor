@@ -2,6 +2,13 @@ import { createProcessedCanvas } from './image-processing';
 import { createLocalDraftStore, type DraftStore } from './persistence';
 import { CanvasRenderer } from './renderer';
 import { EditorStore } from './store';
+import {
+  applyHistorySnapshot,
+  captureHistorySnapshot,
+  pushHistorySnapshot,
+  snapshotsEqual,
+  type HistorySnapshot,
+} from './history';
 import type { CropViewMetrics, EditorState, FilterPreset, ImageResource, PreviewViewMetrics, Rect } from './types';
 import {
   approximatelyFullRect,
@@ -38,6 +45,7 @@ const DEFAULT_VIEWPORT = {
 const MIN_VIEWPORT_ZOOM = 1;
 const MAX_VIEWPORT_ZOOM = 4;
 const VIEWPORT_ZOOM_STEP = 0.2;
+const HISTORY_LIMIT = 100;
 
 export const createInitialEditorState = (): EditorState => ({
   image: null,
@@ -120,6 +128,9 @@ export class ImageCanvasEditor {
   private renderer: CanvasRenderer | null = null;
   private readonly draftStore: DraftStore;
   private readonly store = new EditorStore(createInitialEditorState());
+  private undoStack: HistorySnapshot[] = [];
+  private redoStack: HistorySnapshot[] = [];
+  private pendingHistorySnapshot: HistorySnapshot | null = null;
   private cropInteraction: CropInteraction = { mode: 'idle' };
   private previewInteraction: PreviewInteraction = { mode: 'idle' };
   private resizeObserver: ResizeObserver | null = null;
@@ -415,6 +426,7 @@ export class ImageCanvasEditor {
 
   async loadFile(file: File): Promise<void> {
     const image = await createImageResource(file);
+    this.clearHistory();
     this.store.setState(createStateFromImage(image));
     this.render();
   }
@@ -426,8 +438,7 @@ export class ImageCanvasEditor {
       return;
     }
 
-    this.store.setState(createStateFromImage(image));
-    this.render();
+    this.commitChange(createStateFromImage(image));
   }
 
   enterCropMode(): void {
@@ -452,7 +463,7 @@ export class ImageCanvasEditor {
 
     const nextRect = approximatelyFullRect(state.draftCropRect, state.image) ? null : state.draftCropRect;
 
-    this.setState({
+    this.commitChange({
       cropRect: nextRect,
       draftCropRect: null,
       cropMode: false,
@@ -473,6 +484,18 @@ export class ImageCanvasEditor {
       return;
     }
 
+    if (!state.cropMode && !state.cropRect) {
+      return;
+    }
+
+    if (!state.cropMode) {
+      this.commitChange({
+        cropRect: null,
+        draftCropRect: null,
+      });
+      return;
+    }
+
     this.setState({
       cropRect: null,
       draftCropRect: state.cropMode ? fullImageRect(state.image) : null,
@@ -480,21 +503,21 @@ export class ImageCanvasEditor {
   }
 
   updateRotation(rotation: number): void {
-    this.setState((currentState) => ({
+    this.previewRotation(rotation);
+  }
+
+  rotateBy(delta: number): void {
+    this.commitChange((currentState) => ({
       ...currentState,
       transform: {
         ...currentState.transform,
-        rotation,
+        rotation: currentState.transform.rotation + delta,
       },
     }));
   }
 
-  rotateBy(delta: number): void {
-    this.updateRotation(this.store.getState().transform.rotation + delta);
-  }
-
   toggleFlip(axis: 'flipX' | 'flipY'): void {
-    this.setState((currentState) => ({
+    this.commitChange((currentState) => ({
       ...currentState,
       transform: {
         ...currentState.transform,
@@ -504,7 +527,83 @@ export class ImageCanvasEditor {
   }
 
   updateAdjustment(key: 'contrast' | 'exposure' | 'highlights', value: number): void {
-    this.setState((currentState) => ({
+    this.previewAdjustment(key, value);
+  }
+
+  applyPreset(preset: FilterPreset): void {
+    this.commitChange((currentState) => ({
+      ...currentState,
+      activePreset: preset,
+    }));
+  }
+
+  undo(): void {
+    const state = this.store.getState();
+
+    if (this.pendingHistorySnapshot) {
+      this.store.setState(applyHistorySnapshot(state, this.pendingHistorySnapshot));
+      this.clearPendingPreview();
+      this.render();
+      return;
+    }
+
+    const snapshot = this.undoStack[this.undoStack.length - 1];
+
+    if (!snapshot) {
+      return;
+    }
+
+    this.undoStack = this.undoStack.slice(0, -1);
+    this.redoStack = pushHistorySnapshot(this.redoStack, captureHistorySnapshot(state), HISTORY_LIMIT);
+    this.store.setState(applyHistorySnapshot(state, snapshot));
+    this.render();
+  }
+
+  redo(): void {
+    const state = this.store.getState();
+    const snapshot = this.redoStack[this.redoStack.length - 1];
+
+    if (!snapshot) {
+      return;
+    }
+
+    this.redoStack = this.redoStack.slice(0, -1);
+    this.undoStack = pushHistorySnapshot(this.undoStack, captureHistorySnapshot(state), HISTORY_LIMIT);
+    this.clearPendingPreview();
+    this.store.setState(applyHistorySnapshot(state, snapshot));
+    this.render();
+  }
+
+  canUndo(): boolean {
+    return this.pendingHistorySnapshot !== null || this.undoStack.length > 0;
+  }
+
+  canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
+  previewRotation(rotation: number): void {
+    this.previewChange((currentState) => ({
+      ...currentState,
+      transform: {
+        ...currentState.transform,
+        rotation,
+      },
+    }));
+  }
+
+  commitRotation(rotation: number): void {
+    this.commitChange((currentState) => ({
+      ...currentState,
+      transform: {
+        ...currentState.transform,
+        rotation,
+      },
+    }));
+  }
+
+  previewAdjustment(key: 'contrast' | 'exposure' | 'highlights', value: number): void {
+    this.previewChange((currentState) => ({
       ...currentState,
       adjustments: {
         ...currentState.adjustments,
@@ -513,10 +612,13 @@ export class ImageCanvasEditor {
     }));
   }
 
-  applyPreset(preset: FilterPreset): void {
-    this.setState((currentState) => ({
+  commitAdjustment(key: 'contrast' | 'exposure' | 'highlights', value: number): void {
+    this.commitChange((currentState) => ({
       ...currentState,
-      activePreset: preset,
+      adjustments: {
+        ...currentState.adjustments,
+        [key]: value,
+      },
     }));
   }
 
@@ -550,7 +652,7 @@ export class ImageCanvasEditor {
   async restoreDraft(): Promise<void> {
     const draft = await this.draftStore.restore();
 
-    this.store.setState({
+    this.commitChange({
       image: draft.image,
       cropRect: draft.cropRect,
       draftCropRect: null,
@@ -560,7 +662,6 @@ export class ImageCanvasEditor {
       viewport: { ...DEFAULT_VIEWPORT },
       activePreset: draft.activePreset,
     });
-    this.render();
   }
 
   exportAsDataUrl(type: string = 'image/png', quality?: number): string | null {
@@ -575,6 +676,61 @@ export class ImageCanvasEditor {
 
   private setState(updater: Partial<EditorState> | ((currentState: EditorState) => EditorState)): void {
     this.store.setState(updater);
+    this.render();
+  }
+
+  private clearHistory(): void {
+    this.undoStack = [];
+    this.redoStack = [];
+    this.clearPendingPreview();
+  }
+
+  private clearPendingPreview(): void {
+    this.pendingHistorySnapshot = null;
+  }
+
+  private resolveStateUpdater(
+    updater: Partial<EditorState> | ((currentState: EditorState) => EditorState),
+    currentState: EditorState,
+  ): EditorState {
+    if (typeof updater === 'function') {
+      return updater(currentState);
+    }
+
+    return {
+      ...currentState,
+      ...updater,
+    };
+  }
+
+  private previewChange(updater: Partial<EditorState> | ((currentState: EditorState) => EditorState)): void {
+    const currentState = this.store.getState();
+
+    if (!currentState.image) {
+      return;
+    }
+
+    if (!this.pendingHistorySnapshot) {
+      this.pendingHistorySnapshot = captureHistorySnapshot(currentState);
+    }
+
+    this.setState(updater);
+  }
+
+  private commitChange(updater: Partial<EditorState> | ((currentState: EditorState) => EditorState)): void {
+    const currentState = this.store.getState();
+    const baselineSnapshot = this.pendingHistorySnapshot ?? captureHistorySnapshot(currentState);
+    const nextState = this.resolveStateUpdater(updater, currentState);
+    const nextSnapshot = captureHistorySnapshot(nextState);
+
+    this.clearPendingPreview();
+
+    if (!snapshotsEqual(baselineSnapshot, nextSnapshot)) {
+      this.undoStack = pushHistorySnapshot(this.undoStack, baselineSnapshot, HISTORY_LIMIT);
+      this.redoStack = [];
+    }
+
+    this.store.setState(nextState);
     this.render();
   }
 
