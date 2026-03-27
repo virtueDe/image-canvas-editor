@@ -560,11 +560,9 @@ export class ImageCanvasEditor {
   }
 
   redo(): void {
-    let state = this.store.getState();
+    const state = this.getCommittedState();
 
     if (this.pendingHistorySnapshot) {
-      state = applyHistorySnapshot(state, this.pendingHistorySnapshot);
-      this.store.setState(state);
       this.clearPendingPreview();
     }
 
@@ -712,21 +710,30 @@ export class ImageCanvasEditor {
 
   private previewChange(updater: Partial<EditorState> | ((currentState: EditorState) => EditorState)): void {
     const currentState = this.store.getState();
+    const baselineSnapshot = this.pendingHistorySnapshot ?? captureHistorySnapshot(currentState);
 
     if (!currentState.image) {
       return;
     }
 
     if (!this.pendingHistorySnapshot) {
-      this.pendingHistorySnapshot = captureHistorySnapshot(currentState);
+      this.pendingHistorySnapshot = baselineSnapshot;
     }
 
-    this.setState(updater);
+    const nextState = this.resolveStateUpdater(updater, currentState);
+    const nextSnapshot = captureHistorySnapshot(nextState);
+
+    if (snapshotsEqual(nextSnapshot, baselineSnapshot)) {
+      this.clearPendingPreview();
+    }
+
+    this.store.setState(nextState);
+    this.render();
   }
 
   private commitChange(updater: Partial<EditorState> | ((currentState: EditorState) => EditorState)): void {
-    const currentState = this.store.getState();
-    const baselineSnapshot = this.pendingHistorySnapshot ?? captureHistorySnapshot(currentState);
+    const currentState = this.getCommittedState();
+    const baselineSnapshot = captureHistorySnapshot(currentState);
     const nextState = this.resolveStateUpdater(updater, currentState);
     const nextSnapshot = captureHistorySnapshot(nextState);
 
@@ -739,6 +746,16 @@ export class ImageCanvasEditor {
 
     this.store.setState(nextState);
     this.render();
+  }
+
+  private getCommittedState(): EditorState {
+    const currentState = this.store.getState();
+
+    if (!this.pendingHistorySnapshot) {
+      return currentState;
+    }
+
+    return applyHistorySnapshot(currentState, this.pendingHistorySnapshot);
   }
 
   private setViewport(nextViewport: Partial<EditorState['viewport']>): void {

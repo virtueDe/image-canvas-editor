@@ -31,6 +31,16 @@ export const useImageEditor = () => {
     () => Boolean(renderState.value.image && renderState.value.cropMode && (renderState.value.draftCropRect ?? renderState.value.cropRect)),
   );
   const canCancelCrop = computed(() => Boolean(renderState.value.image && renderState.value.cropMode));
+  const canUndo = computed(() => {
+    const editor = editorRef.value;
+    renderState.value;
+    return editor ? editor.canUndo() : false;
+  });
+  const canRedo = computed(() => {
+    const editor = editorRef.value;
+    renderState.value;
+    return editor ? editor.canRedo() : false;
+  });
   const currentCropSize = computed(() => {
     const image = renderState.value.image;
 
@@ -89,6 +99,14 @@ export const useImageEditor = () => {
     getEditor().updateAdjustment(key, value);
   };
 
+  const previewAdjustment = (key: AdjustmentKey, value: number): void => {
+    getEditor().previewAdjustment(key, value);
+  };
+
+  const commitAdjustment = (key: AdjustmentKey, value: number): void => {
+    getEditor().commitAdjustment(key, value);
+  };
+
   const applyPreset = (preset: FilterPreset): void => {
     getEditor().applyPreset(preset);
   };
@@ -123,6 +141,22 @@ export const useImageEditor = () => {
 
   const updateRotation = (rotation: number): void => {
     getEditor().updateRotation(rotation);
+  };
+
+  const previewRotation = (rotation: number): void => {
+    getEditor().previewRotation(rotation);
+  };
+
+  const commitRotation = (rotation: number): void => {
+    getEditor().commitRotation(rotation);
+  };
+
+  const undo = (): void => {
+    getEditor().undo();
+  };
+
+  const redo = (): void => {
+    getEditor().redo();
   };
 
   const download = (): void => {
@@ -200,13 +234,21 @@ export const useImageEditor = () => {
     zoomText,
     canApplyCrop,
     canCancelCrop,
+    canUndo,
+    canRedo,
     imageMetaRows,
     getPresetButtonClass,
     onFileChange,
+    undo,
+    redo,
     rotateBy,
     toggleFlip,
     updateRotation,
+    previewRotation,
+    commitRotation,
     updateAdjustment,
+    previewAdjustment,
+    commitAdjustment,
     applyPreset,
     zoomIn,
     zoomOut,

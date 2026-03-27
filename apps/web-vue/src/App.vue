@@ -13,13 +13,19 @@ const {
   zoomText,
   canApplyCrop,
   canCancelCrop,
+  canUndo,
+  canRedo,
   imageMetaRows,
   getPresetButtonClass,
   onFileChange,
+  undo,
+  redo,
   rotateBy,
   toggleFlip,
-  updateRotation,
-  updateAdjustment,
+  previewRotation,
+  commitRotation,
+  previewAdjustment,
+  commitAdjustment,
   applyPreset,
   zoomIn,
   zoomOut,
@@ -121,7 +127,8 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                 step="1"
                 :disabled="!hasImage"
                 :value="state.transform.rotation"
-                @input="updateRotation(getRangeValue($event))"
+                @input="previewRotation(getRangeValue($event))"
+                @change="commitRotation(getRangeValue($event))"
               />
             </label>
           </InspectorSection>
@@ -183,7 +190,8 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                   step="1"
                   :disabled="!hasImage"
                   :value="state.adjustments.contrast"
-                  @input="updateAdjustment('contrast', getRangeValue($event))"
+                  @input="previewAdjustment('contrast', getRangeValue($event))"
+                  @change="commitAdjustment('contrast', getRangeValue($event))"
                 />
               </label>
               <label class="block text-sm text-[color:var(--studio-ink-muted)]">
@@ -199,7 +207,8 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                   step="1"
                   :disabled="!hasImage"
                   :value="state.adjustments.exposure"
-                  @input="updateAdjustment('exposure', getRangeValue($event))"
+                  @input="previewAdjustment('exposure', getRangeValue($event))"
+                  @change="commitAdjustment('exposure', getRangeValue($event))"
                 />
               </label>
               <label class="block text-sm text-[color:var(--studio-ink-muted)]">
@@ -215,7 +224,8 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                   step="1"
                   :disabled="!hasImage"
                   :value="state.adjustments.highlights"
-                  @input="updateAdjustment('highlights', getRangeValue($event))"
+                  @input="previewAdjustment('highlights', getRangeValue($event))"
+                  @change="commitAdjustment('highlights', getRangeValue($event))"
                 />
               </label>
             </div>
@@ -231,6 +241,8 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
               </p>
             </div>
             <div class="studio-readout flex w-full flex-wrap items-center gap-2 px-3 py-2 text-xs sm:w-auto">
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!canUndo" @click="undo">撤销</button>
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!canRedo" @click="redo">重做</button>
               <div class="studio-readout__text">
                 <span class="studio-readout__label">缩放</span>
                 <span class="studio-readout__value">{{ zoomText }}</span>
