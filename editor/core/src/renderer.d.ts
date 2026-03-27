@@ -6,7 +6,6 @@ export declare class CanvasRenderer {
     getCropViewMetrics(): CropViewMetrics | null;
     render(state: EditorState): void;
     private prepareCanvas;
-    private drawBackground;
     private drawEmptyState;
     private renderCropMode;
     private drawHandles;

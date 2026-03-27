@@ -1,6 +1,6 @@
 import { createProcessedCanvas } from './image-processing';
 import type { CropViewMetrics, EditorState, PreviewViewMetrics, Rect } from './types';
-import { clamp, createCanvas, fullImageRect } from './utils';
+import { clamp, fullImageRect } from './utils';
 
 const HANDLE_SIZE = 10;
 
@@ -20,8 +20,6 @@ export class CanvasRenderer {
 
   render(state: EditorState): void {
     const { width, height, ctx } = this.prepareCanvas();
-
-    // this.drawBackground(ctx, width, height);
 
     if (!state.image) {
       this.cropViewMetrics = null;
@@ -86,33 +84,6 @@ export class CanvasRenderer {
     ctx.clearRect(0, 0, width, height);
 
     return { width, height, ctx };
-  }
-
-  private drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-    ctx.fillStyle = '#020617';
-    ctx.fillRect(0, 0, width, height);
-
-    const tile = createCanvas(24, 24);
-    const tileCtx = tile.getContext('2d');
-
-    if (!tileCtx) {
-      return;
-    }
-
-    tileCtx.fillStyle = '#0f172a';
-    tileCtx.fillRect(0, 0, 24, 24);
-    tileCtx.fillStyle = '#111827';
-    tileCtx.fillRect(0, 0, 12, 12);
-    tileCtx.fillRect(12, 12, 12, 12);
-
-    const pattern = ctx.createPattern(tile, 'repeat');
-
-    if (!pattern) {
-      return;
-    }
-
-    ctx.fillStyle = pattern;
-    ctx.fillRect(0, 0, width, height);
   }
 
   private renderCropMode(
