@@ -90,7 +90,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
         <aside class="space-y-4">
           <InspectorSection title="图片信息" :open="sectionOpen.meta" @toggle="(next) => setSectionOpen('meta', next)">
             <div class="mb-3 flex items-center justify-end">
-              <button class="btn-soft px-2 py-1 text-xs" type="button" :disabled="!hasImage" @click="resetEdits">
+              <button class="btn-soft px-2 py-1 text-xs" type="button" :disabled="!hasImage || isCropMode" @click="resetEdits">
                 重置全部
               </button>
             </div>
@@ -109,10 +109,10 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             @toggle="(next) => setSectionOpen('transform', next)"
           >
             <div class="grid grid-cols-2 gap-2">
-              <button class="btn-soft" type="button" :disabled="!hasImage" @click="rotateBy(-90)">左转 90°</button>
-              <button class="btn-soft" type="button" :disabled="!hasImage" @click="rotateBy(90)">右转 90°</button>
-              <button class="btn-soft" type="button" :disabled="!hasImage" @click="toggleFlip('flipX')">水平翻转</button>
-              <button class="btn-soft" type="button" :disabled="!hasImage" @click="toggleFlip('flipY')">垂直翻转</button>
+              <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(-90)">左转 90°</button>
+              <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(90)">右转 90°</button>
+              <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipX')">水平翻转</button>
+              <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipY')">垂直翻转</button>
             </div>
             <label class="mt-4 block text-sm text-[color:var(--studio-ink-muted)]">
               <span class="mb-2 flex items-center justify-between">
@@ -125,7 +125,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                 min="-180"
                 max="180"
                 step="1"
-                :disabled="!hasImage"
+                :disabled="!hasImage || isCropMode"
                 :value="state.transform.rotation"
                 @input="previewRotation(getRangeValue($event))"
                 @change="commitRotation(getRangeValue($event))"
@@ -162,6 +162,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                 v-for="item in PRESET_OPTIONS"
                 :key="item.value"
                 type="button"
+                :disabled="isCropMode"
                 :class="getPresetButtonClass(item.value)"
                 @click="applyPreset(item.value)"
               >
@@ -188,7 +189,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                   min="-100"
                   max="100"
                   step="1"
-                  :disabled="!hasImage"
+                  :disabled="!hasImage || isCropMode"
                   :value="state.adjustments.contrast"
                   @input="previewAdjustment('contrast', getRangeValue($event))"
                   @change="commitAdjustment('contrast', getRangeValue($event))"
@@ -205,7 +206,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                   min="-100"
                   max="100"
                   step="1"
-                  :disabled="!hasImage"
+                  :disabled="!hasImage || isCropMode"
                   :value="state.adjustments.exposure"
                   @input="previewAdjustment('exposure', getRangeValue($event))"
                   @change="commitAdjustment('exposure', getRangeValue($event))"
@@ -222,7 +223,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                   min="-100"
                   max="100"
                   step="1"
-                  :disabled="!hasImage"
+                  :disabled="!hasImage || isCropMode"
                   :value="state.adjustments.highlights"
                   @input="previewAdjustment('highlights', getRangeValue($event))"
                   @change="commitAdjustment('highlights', getRangeValue($event))"
@@ -241,8 +242,8 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
               </p>
             </div>
             <div class="studio-readout flex w-full flex-wrap items-center gap-2 px-3 py-2 text-xs sm:w-auto">
-              <button class="btn-soft px-2 py-1" type="button" :disabled="!canUndo" @click="undo">撤销</button>
-              <button class="btn-soft px-2 py-1" type="button" :disabled="!canRedo" @click="redo">重做</button>
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!canUndo || isCropMode" @click="undo">撤销</button>
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!canRedo || isCropMode" @click="redo">重做</button>
               <div class="studio-readout__text">
                 <span class="studio-readout__label">缩放</span>
                 <span class="studio-readout__value">{{ zoomText }}</span>

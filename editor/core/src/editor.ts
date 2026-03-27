@@ -432,9 +432,9 @@ export class ImageCanvasEditor {
   }
 
   resetEdits(): void {
-    const { image } = this.store.getState();
+    const { image, cropMode } = this.store.getState();
 
-    if (!image) {
+    if (!image || cropMode) {
       return;
     }
 
@@ -507,6 +507,10 @@ export class ImageCanvasEditor {
   }
 
   rotateBy(delta: number): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.commitChange((currentState) => ({
       ...currentState,
       transform: {
@@ -517,6 +521,10 @@ export class ImageCanvasEditor {
   }
 
   toggleFlip(axis: 'flipX' | 'flipY'): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.commitChange((currentState) => ({
       ...currentState,
       transform: {
@@ -531,6 +539,10 @@ export class ImageCanvasEditor {
   }
 
   applyPreset(preset: FilterPreset): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.commitChange((currentState) => ({
       ...currentState,
       activePreset: preset,
@@ -539,6 +551,10 @@ export class ImageCanvasEditor {
 
   undo(): void {
     const state = this.store.getState();
+
+    if (state.cropMode) {
+      return;
+    }
 
     if (this.pendingHistorySnapshot) {
       this.store.setState(applyHistorySnapshot(state, this.pendingHistorySnapshot));
@@ -560,6 +576,10 @@ export class ImageCanvasEditor {
   }
 
   redo(): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     const state = this.getCommittedState();
 
     if (this.pendingHistorySnapshot) {
@@ -580,14 +600,28 @@ export class ImageCanvasEditor {
   }
 
   canUndo(): boolean {
+    const state = this.store.getState();
+
+    if (state.cropMode) {
+      return false;
+    }
+
     return this.pendingHistorySnapshot !== null || this.undoStack.length > 0;
   }
 
   canRedo(): boolean {
+    if (this.store.getState().cropMode) {
+      return false;
+    }
+
     return this.redoStack.length > 0;
   }
 
   previewRotation(rotation: number): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.previewChange((currentState) => ({
       ...currentState,
       transform: {
@@ -598,6 +632,10 @@ export class ImageCanvasEditor {
   }
 
   commitRotation(rotation: number): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.commitChange((currentState) => ({
       ...currentState,
       transform: {
@@ -608,6 +646,10 @@ export class ImageCanvasEditor {
   }
 
   previewAdjustment(key: 'contrast' | 'exposure' | 'highlights', value: number): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.previewChange((currentState) => ({
       ...currentState,
       adjustments: {
@@ -618,6 +660,10 @@ export class ImageCanvasEditor {
   }
 
   commitAdjustment(key: 'contrast' | 'exposure' | 'highlights', value: number): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.commitChange((currentState) => ({
       ...currentState,
       adjustments: {
