@@ -503,7 +503,7 @@ export class ImageCanvasEditor {
   }
 
   updateRotation(rotation: number): void {
-    this.previewRotation(rotation);
+    this.commitRotation(rotation);
   }
 
   rotateBy(delta: number): void {
@@ -527,7 +527,7 @@ export class ImageCanvasEditor {
   }
 
   updateAdjustment(key: 'contrast' | 'exposure' | 'highlights', value: number): void {
-    this.previewAdjustment(key, value);
+    this.commitAdjustment(key, value);
   }
 
   applyPreset(preset: FilterPreset): void {
@@ -560,16 +560,23 @@ export class ImageCanvasEditor {
   }
 
   redo(): void {
-    const state = this.store.getState();
+    let state = this.store.getState();
+
+    if (this.pendingHistorySnapshot) {
+      state = applyHistorySnapshot(state, this.pendingHistorySnapshot);
+      this.store.setState(state);
+      this.clearPendingPreview();
+    }
+
     const snapshot = this.redoStack[this.redoStack.length - 1];
 
     if (!snapshot) {
+      this.render();
       return;
     }
 
     this.redoStack = this.redoStack.slice(0, -1);
     this.undoStack = pushHistorySnapshot(this.undoStack, captureHistorySnapshot(state), HISTORY_LIMIT);
-    this.clearPendingPreview();
     this.store.setState(applyHistorySnapshot(state, snapshot));
     this.render();
   }
