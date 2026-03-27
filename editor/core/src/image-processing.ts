@@ -1,5 +1,6 @@
 import { PRESET_FILTERS } from './presets';
 import type { EditorAdjustments, EditorState, ImageResource, Rect } from './types';
+import { resolveTextOverlayDrawConfig, sanitizeTextOverlay } from './text-overlay';
 import { clamp, createCanvas, fullImageRect } from './utils';
 
 interface RenderOptions {
@@ -108,6 +109,32 @@ const transformCanvas = (
   return canvas;
 };
 
+const drawTextOverlay = (canvas: HTMLCanvasElement, state: EditorState): void => {
+  if (!state.textOverlay) {
+    return;
+  }
+
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('无法获取文字渲染上下文');
+  }
+
+  const textOverlay = sanitizeTextOverlay(state.textOverlay);
+  const drawConfig = resolveTextOverlayDrawConfig(textOverlay, canvas.width, canvas.height, (text, fontSize) => {
+    ctx.font = `${fontSize}px "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
+    return ctx.measureText(text);
+  });
+
+  ctx.save();
+  ctx.font = drawConfig.font;
+  ctx.fillStyle = textOverlay.color;
+  ctx.textAlign = drawConfig.textAlign;
+  ctx.textBaseline = drawConfig.textBaseline;
+  ctx.fillText(drawConfig.text, drawConfig.x, drawConfig.y);
+  ctx.restore();
+};
+
 export const createProcessedCanvas = (
   state: EditorState,
   options: RenderOptions = {},
@@ -122,12 +149,17 @@ export const createProcessedCanvas = (
   applyAdjustments(workingCanvas, state.adjustments);
 
   return {
-    canvas: transformCanvas(
-      workingCanvas,
-      state.transform.rotation,
-      state.transform.flipX,
-      state.transform.flipY,
-    ),
+    canvas: (() => {
+      const transformedCanvas = transformCanvas(
+        workingCanvas,
+        state.transform.rotation,
+        state.transform.flipX,
+        state.transform.flipY,
+      );
+
+      drawTextOverlay(transformedCanvas, state);
+      return transformedCanvas;
+    })(),
     cropRect,
   };
 };
