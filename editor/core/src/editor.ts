@@ -425,6 +425,10 @@ export class ImageCanvasEditor {
   }
 
   async loadFile(file: File): Promise<void> {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     const image = await createImageResource(file);
     this.clearHistory();
     this.store.setState(createStateFromImage(image));
@@ -444,7 +448,7 @@ export class ImageCanvasEditor {
   enterCropMode(): void {
     const state = this.store.getState();
 
-    if (!state.image) {
+    if (!state.image || state.cropMode) {
       return;
     }
 
@@ -674,25 +678,37 @@ export class ImageCanvasEditor {
   }
 
   zoomIn(): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.setViewport({
       zoom: this.clampZoom(this.store.getState().viewport.zoom + VIEWPORT_ZOOM_STEP),
     });
   }
 
   zoomOut(): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.setViewport({
       zoom: this.clampZoom(this.store.getState().viewport.zoom - VIEWPORT_ZOOM_STEP),
     });
   }
 
   resetViewport(): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     this.setViewport({ ...DEFAULT_VIEWPORT });
   }
 
   saveDraft(): boolean {
     const state = this.store.getState();
 
-    if (!state.image) {
+    if (!state.image || state.cropMode) {
       return false;
     }
 
@@ -701,6 +717,10 @@ export class ImageCanvasEditor {
   }
 
   async restoreDraft(): Promise<void> {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
     const draft = await this.draftStore.restore();
 
     this.commitChange({

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const props = defineProps<{
   hasImage: boolean;
+  editingLocked: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -26,13 +27,13 @@ const downloadImage = () => emit('download');
       </p>
     </div>
     <div class="panel flex flex-wrap items-center gap-2 px-4 py-3">
-      <label class="btn-primary cursor-pointer">
-        <input class="hidden" type="file" accept="image/*" @change="handleFileChange" />
+      <label class="btn-primary cursor-pointer" :class="{ 'pointer-events-none opacity-60': props.editingLocked }">
+        <input class="hidden" type="file" accept="image/*" :disabled="props.editingLocked" @change="handleFileChange" />
         选择图片
       </label>
-      <button class="btn-soft" type="button" :disabled="!props.hasImage" @click="saveDraft">保存草稿</button>
-      <button class="btn-soft" type="button" @click="restoreDraft">恢复草稿</button>
-      <button class="btn-primary" type="button" :disabled="!props.hasImage" @click="downloadImage">
+      <button class="btn-soft" type="button" :disabled="!props.hasImage || props.editingLocked" @click="saveDraft">保存草稿</button>
+      <button class="btn-soft" type="button" :disabled="props.editingLocked" @click="restoreDraft">恢复草稿</button>
+      <button class="btn-primary" type="button" :disabled="!props.hasImage || props.editingLocked" @click="downloadImage">
         下载 PNG
       </button>
     </div>

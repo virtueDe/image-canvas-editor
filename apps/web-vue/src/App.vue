@@ -79,6 +79,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
       <div class="studio-header">
         <WorkbenchHeader
           :has-image="hasImage"
+          :editing-locked="isCropMode"
           @file-change="onFileChange"
           @save-draft="saveCurrentDraft"
           @restore-draft="restoreCurrentDraft"
@@ -141,7 +142,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             @toggle="(next) => setSectionOpen('crop', next)"
           >
             <div class="grid grid-cols-2 gap-2">
-              <button class="btn-soft" type="button" :disabled="!hasImage" @click="enterCropMode">进入裁剪</button>
+              <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="enterCropMode">进入裁剪</button>
               <button class="btn-soft" type="button" :disabled="!hasImage" @click="resetCrop">清除裁剪</button>
               <button class="btn-primary" type="button" :disabled="!canApplyCrop" @click="applyCrop">应用裁剪</button>
               <button class="btn-soft" type="button" :disabled="!canCancelCrop" @click="cancelCrop">取消裁剪</button>
@@ -248,9 +249,9 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
                 <span class="studio-readout__label">缩放</span>
                 <span class="studio-readout__value">{{ zoomText }}</span>
               </div>
-              <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomOut">缩小</button>
-              <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="zoomIn">放大</button>
-              <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage" @click="resetViewport">
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage || isCropMode" @click="zoomOut">缩小</button>
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage || isCropMode" @click="zoomIn">放大</button>
+              <button class="btn-soft px-2 py-1" type="button" :disabled="!hasImage || isCropMode" @click="resetViewport">
                 复位视图
               </button>
             </div>
