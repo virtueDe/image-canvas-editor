@@ -25,6 +25,14 @@ export interface EditorViewport {
   offsetY: number;
 }
 
+export interface TextOverlay {
+  text: string;
+  xRatio: number;
+  yRatio: number;
+  fontSize: number;
+  color: string;
+}
+
 export interface ImageResource {
   element: HTMLImageElement;
   width: number;
@@ -38,6 +46,7 @@ export interface EditorState {
   cropRect: Rect | null;
   draftCropRect: Rect | null;
   cropMode: boolean;
+  textOverlay: TextOverlay | null;
   adjustments: EditorAdjustments;
   transform: EditorTransform;
   viewport: EditorViewport;
@@ -47,6 +56,7 @@ export interface EditorState {
 export interface SerializableEditorState {
   image: Omit<ImageResource, 'element'> | null;
   cropRect: Rect | null;
+  textOverlay: TextOverlay | null;
   adjustments: EditorAdjustments;
   transform: EditorTransform;
   activePreset: FilterPreset;
@@ -64,10 +74,17 @@ export interface CropViewMetrics {
 export interface PreviewViewMetrics {
   canvasWidth: number;
   canvasHeight: number;
+  sourceWidth: number;
+  sourceHeight: number;
   baseDisplayWidth: number;
   baseDisplayHeight: number;
   displayX: number;
   displayY: number;
   displayWidth: number;
   displayHeight: number;
+}
+
+export interface TextOverlayScreenRect extends Rect {
+  widthRatio: number;
+  heightRatio: number;
 }

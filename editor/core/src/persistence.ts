@@ -18,6 +18,7 @@ const toSerializable = (state: EditorState): SerializableEditorState => ({
       }
     : null,
   cropRect: state.cropRect,
+  textOverlay: state.textOverlay,
   adjustments: state.adjustments,
   transform: state.transform,
   activePreset: state.activePreset,
@@ -48,11 +49,24 @@ export const createLocalDraftStore = (storageKey = DEFAULT_DRAFT_KEY): DraftStor
       throw new Error('没有找到可恢复的草稿');
     }
 
-    const parsed = JSON.parse(rawValue) as SerializableEditorState;
+    const parsed = JSON.parse(rawValue) as Partial<SerializableEditorState>;
 
     return {
       ...parsed,
-      image: await hydrateImage(parsed.image),
-    };
+      cropRect: parsed.cropRect ?? null,
+      textOverlay: parsed.textOverlay ?? null,
+      adjustments: parsed.adjustments ?? {
+        contrast: 0,
+        exposure: 0,
+        highlights: 0,
+      },
+      transform: parsed.transform ?? {
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+      },
+      activePreset: parsed.activePreset ?? 'original',
+      image: await hydrateImage(parsed.image ?? null),
+    } as SerializableEditorState & { image: ImageResource | null };
   },
 });

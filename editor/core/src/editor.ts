@@ -19,6 +19,12 @@ import {
   pointInRect,
   readFileAsDataUrl,
 } from './utils';
+import {
+  createDefaultTextOverlay,
+  isPointInTextOverlay,
+  resolveTextOverlayLayout,
+  sanitizeTextOverlay,
+} from './text-overlay';
 
 type CropHandle = 'inside' | 'nw' | 'ne' | 'sw' | 'se';
 
@@ -30,7 +36,15 @@ type CropInteraction =
 
 type PreviewInteraction =
   | { mode: 'idle' }
-  | { mode: 'panning'; startClientX: number; startClientY: number; offsetX: number; offsetY: number };
+  | { mode: 'panning'; startClientX: number; startClientY: number; offsetX: number; offsetY: number }
+  | {
+      mode: 'moving-text';
+      startClientX: number;
+      startClientY: number;
+      textOverlay: NonNullable<EditorState['textOverlay']>;
+      displayWidth: number;
+      displayHeight: number;
+    };
 
 export interface ImageCanvasEditorOptions {
   draftStore?: DraftStore;
@@ -52,6 +66,7 @@ export const createInitialEditorState = (): EditorState => ({
   cropRect: null,
   draftCropRect: null,
   cropMode: false,
+  textOverlay: null,
   adjustments: {
     contrast: 0,
     exposure: 0,
@@ -81,6 +96,38 @@ const createImageResource = async (file: File): Promise<ImageResource> => {
     height: element.naturalHeight,
     name: file.name,
     dataUrl,
+  };
+};
+
+const getPointerOnPreview = (
+  event: PointerEvent,
+  canvas: HTMLCanvasElement,
+): { canvasX: number; canvasY: number } => {
+  const rect = canvas.getBoundingClientRect();
+
+  return {
+    canvasX: event.clientX - rect.left,
+    canvasY: event.clientY - rect.top,
+  };
+};
+
+const getTextOverlayScreenRect = (
+  textOverlay: NonNullable<EditorState['textOverlay']>,
+  metrics: PreviewViewMetrics,
+): Rect | null => {
+  if (metrics.sourceWidth <= 0 || metrics.sourceHeight <= 0) {
+    return null;
+  }
+
+  const layout = resolveTextOverlayLayout(sanitizeTextOverlay(textOverlay), metrics.sourceWidth, metrics.sourceHeight);
+  const scaleX = metrics.displayWidth / metrics.sourceWidth;
+  const scaleY = metrics.displayHeight / metrics.sourceHeight;
+
+  return {
+    x: metrics.displayX + layout.x * scaleX,
+    y: metrics.displayY + layout.y * scaleY,
+    width: layout.width * scaleX,
+    height: layout.height * scaleY,
   };
 };
 
@@ -155,6 +202,22 @@ export class ImageCanvasEditor {
 
     if (!state.cropMode && previewMetrics) {
       canvas.setPointerCapture(event.pointerId);
+      const point = getPointerOnPreview(event, canvas);
+      const textOverlayRect = state.textOverlay ? getTextOverlayScreenRect(state.textOverlay, previewMetrics) : null;
+
+      if (state.textOverlay && textOverlayRect && isPointInTextOverlay(textOverlayRect, point.canvasX, point.canvasY, 8)) {
+        this.previewInteraction = {
+          mode: 'moving-text',
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          textOverlay: sanitizeTextOverlay(state.textOverlay),
+          displayWidth: previewMetrics.displayWidth,
+          displayHeight: previewMetrics.displayHeight,
+        };
+        this.syncCanvasCursor();
+        return;
+      }
+
       this.previewInteraction = {
         mode: 'panning',
         startClientX: event.clientX,
@@ -218,6 +281,28 @@ export class ImageCanvasEditor {
     const cropMetrics = this.renderer?.getCropViewMetrics() ?? null;
 
     if (!canvas || !state.image) {
+      return;
+    }
+
+    if (this.previewInteraction.mode === 'moving-text' && !state.cropMode) {
+      const nextTextOverlay = sanitizeTextOverlay({
+        ...this.previewInteraction.textOverlay,
+        xRatio:
+          this.previewInteraction.textOverlay.xRatio +
+          (this.previewInteraction.displayWidth > 0
+            ? (event.clientX - this.previewInteraction.startClientX) / this.previewInteraction.displayWidth
+            : 0),
+        yRatio:
+          this.previewInteraction.textOverlay.yRatio +
+          (this.previewInteraction.displayHeight > 0
+            ? (event.clientY - this.previewInteraction.startClientY) / this.previewInteraction.displayHeight
+            : 0),
+      });
+
+      this.previewChange((currentState) => ({
+        ...currentState,
+        textOverlay: nextTextOverlay,
+      }));
       return;
     }
 
@@ -349,6 +434,9 @@ export class ImageCanvasEditor {
   };
 
   private readonly stopCropInteraction = (event: PointerEvent): void => {
+    const previewInteraction = this.previewInteraction;
+    const finalTextOverlay = previewInteraction.mode === 'moving-text' ? this.store.getState().textOverlay : null;
+
     if (this.canvas?.hasPointerCapture(event.pointerId)) {
       this.canvas.releasePointerCapture(event.pointerId);
     }
@@ -356,6 +444,12 @@ export class ImageCanvasEditor {
     this.cropInteraction = { mode: 'idle' };
     this.previewInteraction = { mode: 'idle' };
     this.syncCanvasCursor();
+
+    if (previewInteraction.mode === 'moving-text' && finalTextOverlay) {
+      this.commitChange({
+        textOverlay: finalTextOverlay,
+      });
+    }
   };
 
   constructor(options: ImageCanvasEditorOptions = {}) {
@@ -502,6 +596,75 @@ export class ImageCanvasEditor {
 
     this.setState({
       draftCropRect: fullImageRect(state.image),
+    });
+  }
+
+  ensureTextOverlay(): void {
+    const state = this.store.getState();
+
+    if (!state.image || state.cropMode || state.textOverlay) {
+      return;
+    }
+
+    this.commitChange({
+      textOverlay: createDefaultTextOverlay(),
+    });
+  }
+
+  removeTextOverlay(): void {
+    const state = this.store.getState();
+
+    if (!state.image || state.cropMode || !state.textOverlay) {
+      return;
+    }
+
+    this.commitChange({
+      textOverlay: null,
+    });
+  }
+
+  updateTextOverlayText(text: string): void {
+    const state = this.store.getState();
+
+    if (!state.image || state.cropMode || !state.textOverlay) {
+      return;
+    }
+
+    this.commitChange({
+      textOverlay: sanitizeTextOverlay({
+        ...state.textOverlay,
+        text,
+      }),
+    });
+  }
+
+  updateTextOverlayFontSize(fontSize: number): void {
+    const state = this.store.getState();
+
+    if (!state.image || state.cropMode || !state.textOverlay) {
+      return;
+    }
+
+    this.commitChange({
+      textOverlay: sanitizeTextOverlay({
+        ...state.textOverlay,
+        fontSize,
+      }),
+    });
+  }
+
+  updateTextOverlayColor(color: string): void {
+    const state = this.store.getState();
+
+    if (!state.image || state.cropMode || !state.textOverlay) {
+      return;
+    }
+
+    this.commitChange({
+      textOverlay: {
+        ...state.textOverlay,
+        color,
+      },
     });
   }
 
@@ -725,6 +888,7 @@ export class ImageCanvasEditor {
     this.commitChange({
       image: draft.image,
       cropRect: draft.cropRect,
+      textOverlay: draft.textOverlay ?? null,
       draftCropRect: null,
       cropMode: false,
       adjustments: draft.adjustments,
@@ -936,7 +1100,8 @@ export class ImageCanvasEditor {
       return;
     }
 
-    this.canvas.style.cursor = this.previewInteraction.mode === 'panning' ? 'grabbing' : 'grab';
+    this.canvas.style.cursor =
+      this.previewInteraction.mode === 'moving-text' || this.previewInteraction.mode === 'panning' ? 'grabbing' : 'grab';
   }
 
   private render(): void {

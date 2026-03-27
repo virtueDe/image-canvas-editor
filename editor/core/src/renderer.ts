@@ -1,5 +1,6 @@
 import { createProcessedCanvas } from './image-processing';
 import type { CropViewMetrics, EditorState, PreviewViewMetrics, Rect } from './types';
+import { resolveTextOverlayLayout, sanitizeTextOverlay } from './text-overlay';
 import { clamp, fullImageRect } from './utils';
 
 const HANDLE_SIZE = 10;
@@ -46,6 +47,8 @@ export class CanvasRenderer {
     this.previewViewMetrics = {
       canvasWidth: width,
       canvasHeight: height,
+      sourceWidth: processed.canvas.width,
+      sourceHeight: processed.canvas.height,
       baseDisplayWidth: baseRect.width,
       baseDisplayHeight: baseRect.height,
       displayX: imageRect.x,
@@ -56,6 +59,7 @@ export class CanvasRenderer {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(processed.canvas, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
+    this.drawTextOverlaySelection(ctx, state, processed.canvas.width, processed.canvas.height, imageRect);
     this.drawInfo(ctx, imageRect, `${processed.canvas.width} × ${processed.canvas.height} · ${Math.round(state.viewport.zoom * 100)}%`);
   }
 
@@ -166,6 +170,41 @@ export class CanvasRenderer {
     ctx.fillRect(rect.x, baselineY - 14, textWidth + paddingX * 2, 28);
     ctx.fillStyle = '#e2e8f0';
     ctx.fillText(text, rect.x + paddingX, baselineY + 4);
+  }
+
+  private drawTextOverlaySelection(
+    ctx: CanvasRenderingContext2D,
+    state: EditorState,
+    sourceWidth: number,
+    sourceHeight: number,
+    imageRect: Rect,
+  ): void {
+    if (!state.textOverlay) {
+      return;
+    }
+
+    const textOverlay = sanitizeTextOverlay(state.textOverlay);
+    const layout = resolveTextOverlayLayout(textOverlay, sourceWidth, sourceHeight, (text, fontSize) => {
+      ctx.font = `${fontSize}px "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
+      return ctx.measureText(text);
+    });
+    const scaleX = imageRect.width / sourceWidth;
+    const scaleY = imageRect.height / sourceHeight;
+    const screenRect = {
+      x: imageRect.x + layout.x * scaleX,
+      y: imageRect.y + layout.y * scaleY,
+      width: layout.width * scaleX,
+      height: layout.height * scaleY,
+    };
+
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = 'rgba(233, 192, 131, 0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.fillStyle = 'rgba(233, 192, 131, 0.12)';
+    ctx.fillRect(screenRect.x - 6, screenRect.y - 6, screenRect.width + 12, screenRect.height + 12);
+    ctx.strokeRect(screenRect.x - 6, screenRect.y - 6, screenRect.width + 12, screenRect.height + 12);
+    ctx.restore();
   }
 
   private fitRect(sourceWidth: number, sourceHeight: number, maxWidth: number, maxHeight: number, gap: number): Rect {

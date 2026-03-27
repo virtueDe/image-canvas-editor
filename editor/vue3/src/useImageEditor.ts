@@ -8,6 +8,22 @@ import {
 } from '@image-canvas-editor/editor-core';
 
 type AdjustmentKey = 'contrast' | 'exposure' | 'highlights';
+type TextEditorBridge = ImageCanvasEditor & {
+  ensureTextOverlay: () => void;
+  removeTextOverlay: () => void;
+  updateTextOverlayText: (text: string) => void;
+  updateTextOverlayFontSize: (fontSize: number) => void;
+  updateTextOverlayColor: (color: string) => void;
+};
+
+const TEXT_PRESET_COLORS = [
+  { label: '云白', value: '#F5EFE7' },
+  { label: '暖金', value: '#E9C083' },
+  { label: '天青', value: '#38BDF8' },
+  { label: '莓红', value: '#FB7185' },
+  { label: '薄荷', value: '#86EFAC' },
+  { label: '墨黑', value: '#1C1917' },
+] as const;
 
 export const useImageEditor = () => {
   const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -22,15 +38,19 @@ export const useImageEditor = () => {
 
     return editorRef.value;
   };
+  const getTextEditor = (): TextEditorBridge => getEditor() as TextEditorBridge;
 
   const renderState = computed(() => state.value);
   const hasImage = computed(() => Boolean(renderState.value.image));
+  const textOverlay = computed<EditorState['textOverlay']>(() => renderState.value.textOverlay);
+  const hasTextOverlay = computed(() => Boolean(textOverlay.value));
   const rotationText = computed(() => `${Math.round(renderState.value.transform.rotation)}°`);
   const zoomText = computed(() => `${Math.round(renderState.value.viewport.zoom * 100)}%`);
   const canApplyCrop = computed(
     () => Boolean(renderState.value.image && renderState.value.cropMode && (renderState.value.draftCropRect ?? renderState.value.cropRect)),
   );
   const canCancelCrop = computed(() => Boolean(renderState.value.image && renderState.value.cropMode));
+  const canEditText = computed(() => Boolean(renderState.value.image && !renderState.value.cropMode));
   const canUndo = computed(() => {
     const editor = editorRef.value;
     renderState.value;
@@ -57,10 +77,29 @@ export const useImageEditor = () => {
 
     return `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
   });
+  const textOverlayLength = computed(() => textOverlay.value?.text.length ?? 0);
+  const textOverlayFontSize = computed(() => textOverlay.value?.fontSize ?? 48);
+  const textOverlayHint = computed(() => {
+    if (!hasImage.value) {
+      return '先上传图片，再添加一段文字。';
+    }
+
+    if (renderState.value.cropMode) {
+      return '裁剪模式下暂不支持文字编辑。';
+    }
+
+    return hasTextOverlay.value ? '已启用文字，可在画布中直接拖动定位。' : '先新增一段文字，再调整内容、字号和颜色。';
+  });
 
   const imageMetaRows = computed(() => {
     const image = renderState.value.image;
-    const status = !image ? '等待上传图片' : renderState.value.cropMode ? '正在裁剪' : '可编辑';
+    const status = !image
+      ? '等待上传图片'
+      : renderState.value.cropMode
+        ? '正在裁剪'
+        : hasTextOverlay.value
+          ? '文字已启用'
+          : '可编辑';
 
     return [
       { label: '文件名', value: image?.name ?? '未加载' },
@@ -150,6 +189,21 @@ export const useImageEditor = () => {
   const commitRotation = (rotation: number): void => {
     getEditor().commitRotation(rotation);
   };
+  const ensureTextOverlay = (): void => {
+    getTextEditor().ensureTextOverlay();
+  };
+  const removeTextOverlay = (): void => {
+    getTextEditor().removeTextOverlay();
+  };
+  const updateTextOverlayText = (text: string): void => {
+    getTextEditor().updateTextOverlayText(text);
+  };
+  const updateTextOverlayFontSize = (fontSize: number): void => {
+    getTextEditor().updateTextOverlayFontSize(fontSize);
+  };
+  const updateTextOverlayColor = (color: string): void => {
+    getTextEditor().updateTextOverlayColor(color);
+  };
 
   const undo = (): void => {
     getEditor().undo();
@@ -226,10 +280,17 @@ export const useImageEditor = () => {
 
   return {
     PRESET_OPTIONS,
+    TEXT_PRESET_COLORS,
     canvasRef,
     editorRef,
     state: renderState,
     hasImage,
+    textOverlay,
+    hasTextOverlay,
+    canEditText,
+    textOverlayHint,
+    textOverlayLength,
+    textOverlayFontSize,
     rotationText,
     zoomText,
     canApplyCrop,
@@ -246,6 +307,11 @@ export const useImageEditor = () => {
     updateRotation,
     previewRotation,
     commitRotation,
+    ensureTextOverlay,
+    removeTextOverlay,
+    updateTextOverlayText,
+    updateTextOverlayFontSize,
+    updateTextOverlayColor,
     updateAdjustment,
     previewAdjustment,
     commitAdjustment,

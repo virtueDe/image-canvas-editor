@@ -12,4 +12,5 @@ export type {
   PreviewViewMetrics,
   Rect,
   SerializableEditorState,
+  TextOverlay,
 } from './types';

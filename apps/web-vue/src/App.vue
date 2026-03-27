@@ -6,9 +6,16 @@ import { useImageEditor } from '@image-canvas-editor/editor-vue';
 
 const {
   PRESET_OPTIONS,
+  TEXT_PRESET_COLORS,
   canvasRef,
   state,
   hasImage,
+  textOverlay,
+  hasTextOverlay,
+  canEditText,
+  textOverlayHint,
+  textOverlayLength,
+  textOverlayFontSize,
   rotationText,
   zoomText,
   canApplyCrop,
@@ -24,6 +31,11 @@ const {
   toggleFlip,
   previewRotation,
   commitRotation,
+  ensureTextOverlay,
+  removeTextOverlay,
+  updateTextOverlayText,
+  updateTextOverlayFontSize,
+  updateTextOverlayColor,
   previewAdjustment,
   commitAdjustment,
   applyPreset,
@@ -40,21 +52,35 @@ const {
   restoreCurrentDraft,
 } = useImageEditor();
 
-type SectionId = 'meta' | 'transform' | 'crop' | 'preset' | 'adjust';
+type SectionId = 'meta' | 'transform' | 'crop' | 'text' | 'preset' | 'adjust';
 
 const sectionOpen = reactive<Record<SectionId, boolean>>({
   meta: true,
   transform: true,
   crop: false,
+  text: true,
   preset: false,
   adjust: true,
 });
 
 const isCropMode = computed(() => Boolean(state.value.cropMode));
+const stageModeLabel = computed(() => {
+  if (!hasImage.value) {
+    return '等待上传图片';
+  }
+
+  if (isCropMode.value) {
+    return '裁剪模式';
+  }
+
+  return hasTextOverlay.value ? '文字模式' : '普通模式';
+});
 const stageHint = computed(() =>
   isCropMode.value
     ? '裁剪模式：拖拽裁剪框，拖动内部移动，四角缩放。'
-    : '普通模式：拖拽移动画布，滚轮缩放，双击复位视图。',
+    : hasTextOverlay.value
+      ? '文字模式：拖动画布中的文字可定位，拖动空白处继续移动画布。'
+      : '普通模式：拖拽移动画布，滚轮缩放，双击复位视图。',
 );
 
 const setSectionOpen = (section: SectionId, nextOpen: boolean): void => {
@@ -66,6 +92,14 @@ watch(
   (next) => {
     if (next) {
       sectionOpen.crop = true;
+    }
+  },
+);
+watch(
+  () => state.value.textOverlay,
+  (next) => {
+    if (next) {
+      sectionOpen.text = true;
     }
   },
 );
@@ -150,6 +184,86 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             <p class="mt-3 text-xs leading-5 text-[color:var(--studio-ink-dim)]">
               裁剪坐标始终基于原图。这样后面再旋转、翻转，状态也不会乱。
             </p>
+          </InspectorSection>
+
+          <InspectorSection
+            title="文字"
+            :hint="textOverlayHint"
+            :tone="hasTextOverlay && !isCropMode ? 'accent' : 'muted'"
+            :open="sectionOpen.text"
+            @toggle="(next) => setSectionOpen('text', next)"
+          >
+            <div class="text-tool-stack space-y-4">
+              <div class="grid grid-cols-2 gap-2">
+                <button class="btn-primary" type="button" :disabled="!canEditText" @click="ensureTextOverlay">
+                  {{ hasTextOverlay ? '聚焦文字' : '添加文字' }}
+                </button>
+                <button class="btn-soft" type="button" :disabled="!hasTextOverlay || !canEditText" @click="removeTextOverlay">
+                  删除文字
+                </button>
+              </div>
+
+              <label class="block text-sm text-[color:var(--studio-ink-muted)]">
+                <span class="mb-2 flex items-center justify-between">
+                  <span>文字内容</span>
+                  <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ textOverlayLength }}/24</span>
+                </span>
+                <input
+                  class="text-tool-input w-full"
+                  type="text"
+                  maxlength="24"
+                  placeholder="输入一句简短文案"
+                  :disabled="!hasTextOverlay || !canEditText"
+                  :value="textOverlay?.text ?? ''"
+                  @input="updateTextOverlayText(($event.target as HTMLInputElement).value)"
+                />
+              </label>
+
+              <label class="block text-sm text-[color:var(--studio-ink-muted)]">
+                <span class="mb-2 flex items-center justify-between">
+                  <span>字号</span>
+                  <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ textOverlayFontSize }} px</span>
+                </span>
+                <input
+                  class="input-range"
+                  type="range"
+                  min="16"
+                  max="96"
+                  step="1"
+                  :disabled="!hasTextOverlay || !canEditText"
+                  :value="textOverlayFontSize"
+                  @input="updateTextOverlayFontSize(getRangeValue($event))"
+                />
+              </label>
+
+              <div>
+                <div class="mb-2 flex items-center justify-between text-sm text-[color:var(--studio-ink-muted)]">
+                  <span>颜色</span>
+                  <span class="text-xs text-[color:var(--studio-ink-dim)]">
+                    {{ hasTextOverlay ? '点击切换预设色' : '先创建文字' }}
+                  </span>
+                </div>
+                <div class="text-color-grid grid grid-cols-3 gap-2">
+                  <button
+                    v-for="item in TEXT_PRESET_COLORS"
+                    :key="item.value"
+                    class="text-color-chip"
+                    :class="{ 'is-active': textOverlay?.color === item.value }"
+                    type="button"
+                    :disabled="!hasTextOverlay || !canEditText"
+                    :aria-label="`文字颜色：${item.label}`"
+                    @click="updateTextOverlayColor(item.value)"
+                  >
+                    <span class="text-color-chip__swatch" :style="{ backgroundColor: item.value }" />
+                    <span class="text-color-chip__label">{{ item.label }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <p class="text-helper text-xs leading-5 text-[color:var(--studio-ink-dim)]">
+                {{ hasTextOverlay ? '文字会参与撤销、重做和 PNG 导出。' : '新增后可直接在画布中拖动文字定位。' }}
+              </p>
+            </div>
           </InspectorSection>
 
           <InspectorSection
@@ -239,7 +353,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
             <div>
               <h2 class="panel-title">编辑工作台</h2>
               <p class="text-xs text-[color:var(--studio-ink-dim)]">
-                {{ hasImage ? (isCropMode ? '裁剪模式' : '普通模式') : '等待上传图片' }}
+                {{ stageModeLabel }}
               </p>
             </div>
             <div class="studio-readout flex w-full flex-wrap items-center gap-2 px-3 py-2 text-xs sm:w-auto">
@@ -273,7 +387,7 @@ const getRangeValue = (event: Event): number => Number((event.target as HTMLInpu
               v-else
               class="stage-hint pointer-events-none absolute bottom-6 left-6 max-w-[280px] rounded-3 px-4 py-3 text-sm"
             >
-              <div class="stage-hint__title">{{ isCropMode ? '裁剪模式' : '普通模式' }}</div>
+              <div class="stage-hint__title">{{ stageModeLabel }}</div>
               <div class="mt-1 text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ stageHint }}</div>
             </div>
           </div>

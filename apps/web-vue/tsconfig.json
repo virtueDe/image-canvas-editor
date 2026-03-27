@@ -15,5 +15,9 @@
     "uno.config.ts",
     "../../editor/core/src",
     "../../editor/vue3/src"
+  ],
+  "exclude": [
+    "../../editor/core/src/**/*.test.ts",
+    "../../editor/vue3/src/**/*.test.ts"
   ]
 }

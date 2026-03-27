@@ -6,5 +6,6 @@
       "@image-canvas-editor/editor-core": ["../core/src/index.ts"]
     }
   },
-  "include": ["src", "../core/src"]
+  "include": ["src", "../core/src"],
+  "exclude": ["../core/src/**/*.test.ts"]
 }
