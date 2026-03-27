@@ -501,8 +501,7 @@ export class ImageCanvasEditor {
     }
 
     this.setState({
-      cropRect: null,
-      draftCropRect: state.cropMode ? fullImageRect(state.image) : null,
+      draftCropRect: fullImageRect(state.image),
     });
   }
 

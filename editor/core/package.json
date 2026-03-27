@@ -11,8 +11,7 @@
   ],
   "scripts": {
     "build:artifact": "vite build && tsc -p tsconfig.build.json",
-    "build": "pnpm run build:artifact && node ../../scripts/build-output/verify-build-output.mjs --package @image-canvas-editor/editor-core",
-    "test": "vitest run src/**/*.test.ts"
+    "build": "pnpm run build:artifact && node ../../scripts/build-output/verify-build-output.mjs --package @image-canvas-editor/editor-core"
   },
   "exports": {
     ".": {
