@@ -5,6 +5,7 @@ import {
   resolveTextOverlayDrawConfig,
   resolveTextOverlayLayout,
   resolveTextOverlayPosition,
+  resolveTextOverlayScreenRect,
   sanitizeTextOverlay,
 } from './text-overlay';
 
@@ -93,6 +94,38 @@ describe('text overlay helpers', () => {
       font: '40px "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
       textAlign: 'center',
       textBaseline: 'alphabetic',
+    });
+  });
+
+  it('resolveTextOverlayScreenRect 会把图像内坐标映射到舞台坐标', () => {
+    const screenRect = resolveTextOverlayScreenRect(
+      {
+        ...createDefaultTextOverlay(),
+        text: '标题',
+        xRatio: 0.5,
+        yRatio: 0.5,
+        fontSize: 40,
+      },
+      800,
+      600,
+      {
+        x: 120,
+        y: 80,
+        width: 400,
+        height: 300,
+      },
+      () => ({
+        width: 160,
+        actualBoundingBoxAscent: 28,
+        actualBoundingBoxDescent: 12,
+      }),
+    );
+
+    expect(screenRect).toEqual({
+      x: 280,
+      y: 220,
+      width: 80,
+      height: 20,
     });
   });
 });

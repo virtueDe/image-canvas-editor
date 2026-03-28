@@ -22,7 +22,7 @@ import {
 import {
   createDefaultTextOverlay,
   isPointInTextOverlay,
-  resolveTextOverlayLayout,
+  resolveTextOverlayScreenRect,
   sanitizeTextOverlay,
 } from './text-overlay';
 
@@ -115,20 +115,12 @@ const getTextOverlayScreenRect = (
   textOverlay: NonNullable<EditorState['textOverlay']>,
   metrics: PreviewViewMetrics,
 ): Rect | null => {
-  if (metrics.sourceWidth <= 0 || metrics.sourceHeight <= 0) {
-    return null;
-  }
-
-  const layout = resolveTextOverlayLayout(sanitizeTextOverlay(textOverlay), metrics.sourceWidth, metrics.sourceHeight);
-  const scaleX = metrics.displayWidth / metrics.sourceWidth;
-  const scaleY = metrics.displayHeight / metrics.sourceHeight;
-
-  return {
-    x: metrics.displayX + layout.x * scaleX,
-    y: metrics.displayY + layout.y * scaleY,
-    width: layout.width * scaleX,
-    height: layout.height * scaleY,
-  };
+  return resolveTextOverlayScreenRect(sanitizeTextOverlay(textOverlay), metrics.sourceWidth, metrics.sourceHeight, {
+    x: metrics.displayX,
+    y: metrics.displayY,
+    width: metrics.displayWidth,
+    height: metrics.displayHeight,
+  });
 };
 
 const getPointerOnImage = (

@@ -1,4 +1,4 @@
-import type { TextOverlay } from './types';
+import type { Rect, TextOverlay } from './types';
 import { clamp } from './utils';
 
 export interface TextMeasurement {
@@ -123,6 +123,29 @@ export const resolveTextOverlayDrawConfig = (
     font: layout.font,
     textAlign: 'center',
     textBaseline: 'alphabetic',
+  };
+};
+
+export const resolveTextOverlayScreenRect = (
+  textOverlay: TextOverlay,
+  sourceWidth: number,
+  sourceHeight: number,
+  displayRect: Pick<Rect, 'x' | 'y' | 'width' | 'height'>,
+  measureText: (text: string, fontSize: number) => TextMeasurement = defaultMeasureText,
+): Rect | null => {
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return null;
+  }
+
+  const layout = resolveTextOverlayLayout(textOverlay, sourceWidth, sourceHeight, measureText);
+  const scaleX = displayRect.width / sourceWidth;
+  const scaleY = displayRect.height / sourceHeight;
+
+  return {
+    x: displayRect.x + layout.x * scaleX,
+    y: displayRect.y + layout.y * scaleY,
+    width: layout.width * scaleX,
+    height: layout.height * scaleY,
   };
 };
 

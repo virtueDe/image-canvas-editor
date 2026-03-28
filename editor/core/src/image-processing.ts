@@ -101,10 +101,12 @@ const transformCanvas = (
     throw new Error('无法获取变换 Canvas 上下文');
   }
 
+  ctx.save();
   ctx.translate(targetWidth / 2, targetHeight / 2);
   ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
   ctx.rotate(radians);
   ctx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
+  ctx.restore();
 
   return canvas;
 };

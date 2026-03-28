@@ -1,6 +1,6 @@
 import { createProcessedCanvas } from './image-processing';
 import type { CropViewMetrics, EditorState, PreviewViewMetrics, Rect } from './types';
-import { resolveTextOverlayLayout, sanitizeTextOverlay } from './text-overlay';
+import { resolveTextOverlayScreenRect, sanitizeTextOverlay } from './text-overlay';
 import { clamp, fullImageRect } from './utils';
 
 const HANDLE_SIZE = 10;
@@ -184,18 +184,14 @@ export class CanvasRenderer {
     }
 
     const textOverlay = sanitizeTextOverlay(state.textOverlay);
-    const layout = resolveTextOverlayLayout(textOverlay, sourceWidth, sourceHeight, (text, fontSize) => {
+    const screenRect = resolveTextOverlayScreenRect(textOverlay, sourceWidth, sourceHeight, imageRect, (text, fontSize) => {
       ctx.font = `${fontSize}px "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
       return ctx.measureText(text);
     });
-    const scaleX = imageRect.width / sourceWidth;
-    const scaleY = imageRect.height / sourceHeight;
-    const screenRect = {
-      x: imageRect.x + layout.x * scaleX,
-      y: imageRect.y + layout.y * scaleY,
-      width: layout.width * scaleX,
-      height: layout.height * scaleY,
-    };
+
+    if (!screenRect) {
+      return;
+    }
 
     ctx.save();
     ctx.setLineDash([6, 4]);
