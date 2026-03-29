@@ -74,6 +74,8 @@ const isFixedWorkbenchViewport = ref(
 const inspectorPanelRef = ref<HTMLElement | null>(null);
 const inspectorTriggerButtonRef = ref<HTMLButtonElement | null>(null);
 const inspectorDialogTitleId = 'workbench-inspector-title';
+const inspectorPanelId = 'workbench-inspector-panel';
+const stageToolsPanelId = 'workbench-stage-tools';
 let desktopViewportMediaQuery: MediaQueryList | null = null;
 let fixedWorkbenchViewportMediaQuery: MediaQueryList | null = null;
 let isDocumentScrollLocked = false;
@@ -125,6 +127,7 @@ const stageHint = computed(() =>
       : '普通模式：拖拽移动画布，滚轮缩放，双击复位视图。',
 );
 const isMobileInspectorModal = computed(() => !isDesktopViewport.value && isInspectorOpen.value);
+const shouldScrollInspectorContent = computed(() => isMobileInspectorModal.value || isFixedWorkbenchViewport.value);
 
 const lockDocumentScroll = (): void => {
   if (typeof document === 'undefined' || typeof window === 'undefined' || isDocumentScrollLocked) {
@@ -308,6 +311,7 @@ onBeforeUnmount(() => {
                   : 'rounded-[28px]'
                 : 'fixed inset-y-0 left-0 z-40 h-full w-[min(22rem,100vw)] max-w-full rounded-r-[28px] border-l-0 shadow-[var(--studio-shadow)]'
             "
+            :id="!isDesktopViewport ? inspectorPanelId : undefined"
             :role="isMobileInspectorModal ? 'dialog' : undefined"
             :aria-modal="isMobileInspectorModal ? 'true' : undefined"
             :aria-labelledby="isMobileInspectorModal ? inspectorDialogTitleId : undefined"
@@ -321,7 +325,7 @@ onBeforeUnmount(() => {
               </div>
               <button class="mobile-toggle-btn lg:hidden" type="button" @click="closeInspector({ restoreFocus: true })">关闭</button>
             </div>
-            <div class="px-4 py-4" :class="isFixedWorkbenchViewport ? 'min-h-0 flex-1 overflow-y-auto' : ''">
+            <div class="min-h-0 px-4 py-4" :class="shouldScrollInspectorContent ? 'flex-1 overflow-y-auto overscroll-contain' : ''">
               <div class="space-y-4 pb-4">
                 <InspectorSection title="图片信息" :open="sectionOpen.meta" @toggle="(next) => setSectionOpen('meta', next)">
                   <div class="mb-3 flex items-center justify-end">
@@ -473,8 +477,25 @@ onBeforeUnmount(() => {
                   <p class="mt-2 max-w-2xl text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ stageHint }}</p>
                 </div>
                 <div class="flex items-center gap-2 lg:hidden">
-                  <button class="mobile-toggle-btn" type="button" @click="toggleStageTools">{{ isStageToolsOpen ? '收起工具条' : '展开工具条' }}</button>
-                  <button ref="inspectorTriggerButtonRef" class="mobile-toggle-btn" type="button" @click="openInspector">检查器</button>
+                  <button
+                    class="mobile-toggle-btn"
+                    type="button"
+                    :aria-expanded="isStageToolsOpen"
+                    :aria-controls="stageToolsPanelId"
+                    @click="toggleStageTools"
+                  >
+                    {{ isStageToolsOpen ? '收起工具条' : '展开工具条' }}
+                  </button>
+                  <button
+                    ref="inspectorTriggerButtonRef"
+                    class="mobile-toggle-btn"
+                    type="button"
+                    :aria-expanded="isInspectorOpen"
+                    :aria-controls="inspectorPanelId"
+                    @click="openInspector"
+                  >
+                    检查器
+                  </button>
                 </div>
               </div>
               <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -486,7 +507,7 @@ onBeforeUnmount(() => {
                   <div class="h-4 w-px bg-[color:var(--studio-border)]" />
                   <p class="text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasImage ? '视图动作只影响预览窗口，不会直接写坏原图。' : '上传图片后即可启用撤销、缩放与视图复位。' }}</p>
                 </div>
-                <div class="flex-wrap gap-2" :class="[isStageToolsOpen ? 'flex' : 'hidden', 'lg:flex']">
+                <div :id="stageToolsPanelId" class="flex-wrap gap-2" :class="[isStageToolsOpen ? 'flex' : 'hidden', 'lg:flex']">
                   <button class="btn-soft workbench-icon-btn" type="button" :disabled="!canUndo || isCropMode" @click="undo"><WorkbenchIcon name="undo" :size="16" /><span>撤销</span></button>
                   <button class="btn-soft workbench-icon-btn" type="button" :disabled="!canRedo || isCropMode" @click="redo"><WorkbenchIcon name="redo" :size="16" /><span>重做</span></button>
                   <button class="btn-soft workbench-icon-btn" type="button" :disabled="!hasImage || isCropMode" @click="zoomOut"><WorkbenchIcon name="zoom-out" :size="16" /><span>缩小</span></button>
