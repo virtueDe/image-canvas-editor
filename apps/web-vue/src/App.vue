@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import WorkbenchHeader from './components/WorkbenchHeader.vue';
 import InspectorSection from './components/InspectorSection.vue';
 import { useImageEditor } from '@image-canvas-editor/editor-vue';
@@ -53,6 +53,7 @@ const {
 } = useImageEditor();
 
 type SectionId = 'meta' | 'transform' | 'crop' | 'text' | 'preset' | 'adjust';
+type WorkbenchTheme = 'light' | 'dark';
 
 const sectionOpen = reactive<Record<SectionId, boolean>>({
   meta: true,
@@ -62,6 +63,7 @@ const sectionOpen = reactive<Record<SectionId, boolean>>({
   preset: false,
   adjust: true,
 });
+const theme = ref<WorkbenchTheme>('dark');
 
 const isCropMode = computed(() => Boolean(state.value.cropMode));
 const stageModeLabel = computed(() => {
@@ -105,19 +107,24 @@ watch(
 );
 
 const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
+const toggleTheme = (): void => {
+  theme.value = theme.value === 'dark' ? 'light' : 'dark';
+};
 </script>
 
 <template>
-  <div class="min-h-screen studio-shell">
+  <div class="min-h-screen studio-shell" :data-theme="theme">
     <div class="mx-auto max-w-[1600px] p-4 md:p-6 xl:p-8">
       <div class="studio-header">
         <WorkbenchHeader
           :has-image="hasImage"
           :editing-locked="isCropMode"
+          :theme="theme"
           @file-change="onFileChange"
           @save-draft="saveCurrentDraft"
           @restore-draft="restoreCurrentDraft"
           @download="download"
+          @toggle-theme="toggleTheme"
         />
       </div>
 

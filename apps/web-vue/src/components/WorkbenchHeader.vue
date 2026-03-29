@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import WorkbenchIcon from './WorkbenchIcon.vue';
+
 const props = defineProps<{
   hasImage: boolean;
   editingLocked: boolean;
+  theme: 'light' | 'dark';
 }>();
 
 const emit = defineEmits<{
@@ -9,12 +13,17 @@ const emit = defineEmits<{
   (event: 'saveDraft'): void;
   (event: 'restoreDraft'): void;
   (event: 'download'): void;
+  (event: 'toggleTheme'): void;
 }>();
 
 const handleFileChange = (event: Event) => emit('fileChange', event);
 const saveDraft = () => emit('saveDraft');
 const restoreDraft = () => emit('restoreDraft');
 const downloadImage = () => emit('download');
+const toggleTheme = () => emit('toggleTheme');
+
+const nextThemeIcon = computed(() => (props.theme === 'dark' ? 'theme-light' : 'theme-dark'));
+const nextThemeLabel = computed(() => (props.theme === 'dark' ? '浅色模式' : '深色模式'));
 </script>
 
 <template>
@@ -27,14 +36,44 @@ const downloadImage = () => emit('download');
       </p>
     </div>
     <div class="panel flex flex-wrap items-center gap-2 px-4 py-3">
-      <label class="btn-primary cursor-pointer" :class="{ 'pointer-events-none opacity-60': props.editingLocked }">
+      <button class="btn-soft inline-flex items-center gap-2 whitespace-nowrap" type="button" @click="toggleTheme">
+        <WorkbenchIcon :name="nextThemeIcon" :size="16" />
+        <span>{{ nextThemeLabel }}</span>
+      </button>
+      <label
+        class="btn-primary inline-flex cursor-pointer items-center gap-2 whitespace-nowrap"
+        :class="{ 'pointer-events-none opacity-60': props.editingLocked }"
+      >
         <input class="hidden" type="file" accept="image/*" :disabled="props.editingLocked" @change="handleFileChange" />
-        选择图片
+        <WorkbenchIcon name="upload" :size="16" />
+        <span>上传图片</span>
       </label>
-      <button class="btn-soft" type="button" :disabled="!props.hasImage || props.editingLocked" @click="saveDraft">保存草稿</button>
-      <button class="btn-soft" type="button" :disabled="props.editingLocked" @click="restoreDraft">恢复草稿</button>
-      <button class="btn-primary" type="button" :disabled="!props.hasImage || props.editingLocked" @click="downloadImage">
-        下载 PNG
+      <button
+        class="btn-soft inline-flex items-center gap-2 whitespace-nowrap"
+        type="button"
+        :disabled="!props.hasImage || props.editingLocked"
+        @click="saveDraft"
+      >
+        <WorkbenchIcon name="draft-save" :size="16" />
+        <span>保存草稿</span>
+      </button>
+      <button
+        class="btn-soft inline-flex items-center gap-2 whitespace-nowrap"
+        type="button"
+        :disabled="props.editingLocked"
+        @click="restoreDraft"
+      >
+        <WorkbenchIcon name="draft-restore" :size="16" />
+        <span>恢复草稿</span>
+      </button>
+      <button
+        class="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
+        type="button"
+        :disabled="!props.hasImage || props.editingLocked"
+        @click="downloadImage"
+      >
+        <WorkbenchIcon name="download" :size="16" />
+        <span>下载 PNG</span>
       </button>
     </div>
   </header>
