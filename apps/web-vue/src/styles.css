@@ -18,16 +18,17 @@ html,
 body {
   min-height: 100%;
   margin: 0;
-  background: #14110e;
-  color: #f5efe7;
+  background: var(--studio-bg);
+  color: var(--studio-ink);
+  color-scheme: var(--studio-color-scheme);
 }
 
 #app {
   min-height: 100vh;
 }
 
-.studio-shell[data-theme='dark'] {
-  color-scheme: dark;
+:where(html, body, .studio-shell)[data-theme='dark'] {
+  --studio-color-scheme: dark;
   --studio-bg: #14110e;
   --studio-shell-glow: rgba(233, 192, 131, 0.14);
   --studio-shell-tint: rgba(28, 24, 20, 0.98);
@@ -62,8 +63,8 @@ body {
   --studio-backdrop: rgba(0, 0, 0, 0.55);
 }
 
-.studio-shell[data-theme='light'] {
-  color-scheme: light;
+:where(html, body, .studio-shell)[data-theme='light'] {
+  --studio-color-scheme: light;
   --studio-bg: #f2ecdf;
   --studio-shell-glow: rgba(194, 132, 48, 0.18);
   --studio-shell-tint: rgba(252, 247, 240, 0.96);
@@ -103,6 +104,7 @@ body {
     radial-gradient(circle at top, var(--studio-shell-glow), transparent 45%),
     linear-gradient(180deg, var(--studio-shell-tint), var(--studio-bg));
   color: var(--studio-ink);
+  color-scheme: var(--studio-color-scheme);
   transition:
     background 0.24s ease,
     color 0.24s ease;

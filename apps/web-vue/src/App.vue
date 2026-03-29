@@ -75,6 +75,24 @@ const inspectorDialogTitleId = 'workbench-inspector-title';
 let desktopViewportMediaQuery: MediaQueryList | null = null;
 let fixedWorkbenchViewportMediaQuery: MediaQueryList | null = null;
 
+const applyDocumentTheme = (nextTheme: WorkbenchTheme): void => {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  document.documentElement.dataset.theme = nextTheme;
+  document.body?.setAttribute('data-theme', nextTheme);
+};
+const clearDocumentTheme = (): void => {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  document.documentElement.removeAttribute('data-theme');
+  document.body?.removeAttribute('data-theme');
+};
+applyDocumentTheme(theme.value);
+
 const isCropMode = computed(() => Boolean(state.value.cropMode));
 const stageModeLabel = computed(() => {
   if (!hasImage.value) {
@@ -121,6 +139,7 @@ watch(isDesktopViewport, (next) => {
     closeInspector();
   }
 });
+watch(theme, applyDocumentTheme);
 
 const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
 const toggleTheme = (): void => {
@@ -143,6 +162,7 @@ const handleFixedWorkbenchViewportChange = (event: MediaQueryListEvent): void =>
 };
 
 onMounted(() => {
+  applyDocumentTheme(theme.value);
   desktopViewportMediaQuery = window.matchMedia('(min-width: 1024px)');
   fixedWorkbenchViewportMediaQuery = window.matchMedia('(min-width: 1024px) and (min-height: 780px)');
   isDesktopViewport.value = desktopViewportMediaQuery.matches;
@@ -152,6 +172,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  clearDocumentTheme();
   desktopViewportMediaQuery?.removeEventListener('change', handleDesktopViewportChange);
   fixedWorkbenchViewportMediaQuery?.removeEventListener('change', handleFixedWorkbenchViewportChange);
 });
@@ -385,11 +406,11 @@ onBeforeUnmount(() => {
                   <p class="text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasImage ? '视图动作只影响预览窗口，不会直接写坏原图。' : '上传图片后即可启用撤销、缩放与视图复位。' }}</p>
                 </div>
                 <div class="flex-wrap gap-2" :class="[isStageToolsOpen ? 'flex' : 'hidden', 'lg:flex']">
-                  <button class="toolbar-action-btn" type="button" :disabled="!canUndo || isCropMode" @click="undo"><WorkbenchIcon name="undo" :size="16" /><span>撤销</span></button>
-                  <button class="toolbar-action-btn" type="button" :disabled="!canRedo || isCropMode" @click="redo"><WorkbenchIcon name="redo" :size="16" /><span>重做</span></button>
-                  <button class="toolbar-action-btn" type="button" :disabled="!hasImage || isCropMode" @click="zoomOut"><WorkbenchIcon name="zoom-out" :size="16" /><span>缩小</span></button>
-                  <button class="toolbar-action-btn" type="button" :disabled="!hasImage || isCropMode" @click="zoomIn"><WorkbenchIcon name="zoom-in" :size="16" /><span>放大</span></button>
-                  <button class="toolbar-action-btn" type="button" :disabled="!hasImage || isCropMode" @click="resetViewport"><WorkbenchIcon name="viewport-reset" :size="16" /><span>复位视图</span></button>
+                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!canUndo || isCropMode" @click="undo"><WorkbenchIcon name="undo" :size="16" /><span>撤销</span></button>
+                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!canRedo || isCropMode" @click="redo"><WorkbenchIcon name="redo" :size="16" /><span>重做</span></button>
+                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!hasImage || isCropMode" @click="zoomOut"><WorkbenchIcon name="zoom-out" :size="16" /><span>缩小</span></button>
+                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!hasImage || isCropMode" @click="zoomIn"><WorkbenchIcon name="zoom-in" :size="16" /><span>放大</span></button>
+                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!hasImage || isCropMode" @click="resetViewport"><WorkbenchIcon name="viewport-reset" :size="16" /><span>复位视图</span></button>
                 </div>
               </div>
             </div>

@@ -5,7 +5,6 @@ export default defineConfig({
   shortcuts: {
     'workbench-frame': 'border border-[color:var(--studio-border)] bg-[color:var(--studio-surface-1)] shadow-[var(--studio-shadow-soft)]',
     'workbench-panel': 'workbench-frame rounded-[28px]',
-    panel: 'workbench-panel',
     'panel-title': 'text-sm font-semibold tracking-[0.08em] text-[color:var(--studio-ink-muted)]',
     'status-pill':
       'inline-flex items-center rounded-full border border-[color:var(--studio-border)] bg-[color:var(--studio-surface-2)] px-2 py-1 text-[11px] font-medium text-[color:var(--studio-ink-muted)]',
@@ -21,7 +20,6 @@ export default defineConfig({
     'header-action-btn': 'btn-soft workbench-icon-btn',
     'header-primary-btn': 'btn-primary workbench-icon-btn',
     'theme-toggle-btn': 'header-action-btn min-w-[148px] justify-between',
-    'toolbar-action-btn': 'btn-soft workbench-icon-btn px-3 py-2 text-sm',
     'mobile-toggle-btn': 'btn-soft px-3 py-2 text-xs',
     'mini-action-btn': 'btn-soft px-2 py-1 text-xs',
   },
