@@ -274,10 +274,22 @@ onBeforeUnmount(() => {
                 </InspectorSection>
                 <InspectorSection title="旋转与翻转" :hint="`当前角度 ${rotationText}`" :open="sectionOpen.transform" @toggle="(next) => setSectionOpen('transform', next)">
                   <div class="grid grid-cols-2 gap-2">
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(-90)">左转 90°</button>
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(90)">右转 90°</button>
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipX')">水平翻转</button>
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipY')">垂直翻转</button>
+                    <button class="btn-soft inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(-90)">
+                      <WorkbenchIcon name="rotate-left" :size="16" />
+                      <span>左转 90°</span>
+                    </button>
+                    <button class="btn-soft inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(90)">
+                      <WorkbenchIcon name="rotate-right" :size="16" />
+                      <span>右转 90°</span>
+                    </button>
+                    <button class="btn-soft inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipX')">
+                      <WorkbenchIcon name="flip-horizontal" :size="16" />
+                      <span>水平翻转</span>
+                    </button>
+                    <button class="btn-soft inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipY')">
+                      <WorkbenchIcon name="flip-vertical" :size="16" />
+                      <span>垂直翻转</span>
+                    </button>
                   </div>
                   <label class="mt-4 block text-sm text-[color:var(--studio-ink-muted)]">
                     <span class="mb-2 flex items-center justify-between">
@@ -289,18 +301,36 @@ onBeforeUnmount(() => {
                 </InspectorSection>
                 <InspectorSection title="裁剪" hint="拖拽框选，拖动内部移动，四角缩放" :tone="isCropMode ? 'accent' : 'muted'" :open="sectionOpen.crop" @toggle="(next) => setSectionOpen('crop', next)">
                   <div class="grid grid-cols-2 gap-2">
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="enterCropMode">进入裁剪</button>
-                    <button class="btn-soft" type="button" :disabled="!hasImage" @click="resetCrop">清除裁剪</button>
-                    <button class="btn-primary" type="button" :disabled="!canApplyCrop" @click="applyCrop">应用裁剪</button>
-                    <button class="btn-soft" type="button" :disabled="!canCancelCrop" @click="cancelCrop">取消裁剪</button>
+                    <button class="btn-soft inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasImage || isCropMode" @click="enterCropMode">
+                      <WorkbenchIcon name="crop" :size="16" />
+                      <span>进入裁剪</span>
+                    </button>
+                    <button class="btn-soft inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasImage" @click="resetCrop">
+                      <WorkbenchIcon name="viewport-reset" :size="16" />
+                      <span>清除裁剪</span>
+                    </button>
+                    <button class="btn-primary inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!canApplyCrop" @click="applyCrop">
+                      <WorkbenchIcon name="crop-apply" :size="16" />
+                      <span>应用裁剪</span>
+                    </button>
+                    <button class="btn-soft inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!canCancelCrop" @click="cancelCrop">
+                      <WorkbenchIcon name="crop-cancel" :size="16" />
+                      <span>取消裁剪</span>
+                    </button>
                   </div>
                   <p class="mt-3 text-xs leading-5 text-[color:var(--studio-ink-dim)]">裁剪坐标始终基于原图。这样后面再旋转、翻转，状态也不会乱。</p>
                 </InspectorSection>
                 <InspectorSection title="文字" :hint="textOverlayHint" :tone="hasTextOverlay && !isCropMode ? 'accent' : 'muted'" :open="sectionOpen.text" @toggle="(next) => setSectionOpen('text', next)">
                   <div class="text-tool-stack space-y-4">
                     <div class="grid grid-cols-2 gap-2">
-                      <button class="btn-primary" type="button" :disabled="!canEditText" @click="ensureTextOverlay">{{ hasTextOverlay ? '聚焦文字' : '添加文字' }}</button>
-                      <button class="btn-soft" type="button" :disabled="!hasTextOverlay || !canEditText" @click="removeTextOverlay">删除文字</button>
+                      <button class="btn-primary inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!canEditText" @click="ensureTextOverlay">
+                        <WorkbenchIcon name="text" :size="16" />
+                        <span>{{ hasTextOverlay ? '聚焦文字' : '添加文字' }}</span>
+                      </button>
+                      <button class="btn-soft inline-flex items-center justify-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasTextOverlay || !canEditText" @click="removeTextOverlay">
+                        <WorkbenchIcon name="text-remove" :size="16" />
+                        <span>删除文字</span>
+                      </button>
                     </div>
                     <label class="block text-sm text-[color:var(--studio-ink-muted)]">
                       <span class="mb-2 flex items-center justify-between">
