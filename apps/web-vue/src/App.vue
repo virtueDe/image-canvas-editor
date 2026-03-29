@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch, type CSSProperties } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
 import WorkbenchHeader from './components/WorkbenchHeader.vue';
 import WorkbenchIcon from './components/WorkbenchIcon.vue';
 import InspectorSection from './components/InspectorSection.vue';
@@ -67,6 +67,9 @@ const sectionOpen = reactive<Record<SectionId, boolean>>({
 const theme = ref<WorkbenchTheme>('dark');
 const isInspectorOpen = ref(false);
 const isStageToolsOpen = ref(false);
+const isDesktopViewport = ref(typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false);
+const inspectorDialogTitleId = 'workbench-inspector-title';
+let desktopViewportMediaQuery: MediaQueryList | null = null;
 const themeStyle = computed<CSSProperties>(() =>
   theme.value === 'dark'
     ? {
@@ -126,6 +129,7 @@ const stageHint = computed(() =>
       ? '文字模式：拖动画布中的文字可定位，拖动空白处继续移动画布。'
       : '普通模式：拖拽移动画布，滚轮缩放，双击复位视图。',
 );
+const isMobileInspectorModal = computed(() => !isDesktopViewport.value && isInspectorOpen.value);
 
 const setSectionOpen = (section: SectionId, nextOpen: boolean): void => {
   sectionOpen[section] = nextOpen;
@@ -147,6 +151,11 @@ watch(
     }
   },
 );
+watch(isDesktopViewport, (next) => {
+  if (next) {
+    closeInspector();
+  }
+});
 
 const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
 const toggleTheme = (): void => {
@@ -161,12 +170,34 @@ const closeInspector = (): void => {
 const toggleStageTools = (): void => {
   isStageToolsOpen.value = !isStageToolsOpen.value;
 };
+const handleDesktopViewportChange = (event: MediaQueryListEvent): void => {
+  isDesktopViewport.value = event.matches;
+};
+
+onMounted(() => {
+  desktopViewportMediaQuery = window.matchMedia('(min-width: 1024px)');
+  isDesktopViewport.value = desktopViewportMediaQuery.matches;
+  desktopViewportMediaQuery.addEventListener('change', handleDesktopViewportChange);
+});
+
+onBeforeUnmount(() => {
+  desktopViewportMediaQuery?.removeEventListener('change', handleDesktopViewportChange);
+});
 </script>
 
 <template>
-  <div class="studio-shell h-screen overflow-hidden" :data-theme="theme" :style="themeStyle">
-    <div class="flex h-full flex-col">
-      <div class="studio-header shrink-0 px-4 py-4 md:px-6 md:py-5 xl:px-8 xl:py-6">
+  <div
+    class="studio-shell"
+    :class="isDesktopViewport ? 'h-screen overflow-hidden' : 'min-h-screen'"
+    :data-theme="theme"
+    :style="themeStyle"
+  >
+    <div class="flex flex-col" :class="isDesktopViewport ? 'h-full' : 'min-h-screen'">
+      <div
+        class="studio-header shrink-0 px-4 py-4 md:px-6 md:py-5 xl:px-8 xl:py-6"
+        :inert="isMobileInspectorModal ? '' : undefined"
+        :aria-hidden="isMobileInspectorModal ? 'true' : undefined"
+      >
         <div class="mx-auto max-w-[1680px]">
           <WorkbenchHeader
             :has-image="hasImage"
@@ -180,17 +211,34 @@ const toggleStageTools = (): void => {
           />
         </div>
       </div>
-      <div v-if="isInspectorOpen" class="fixed inset-0 z-30 bg-black/55 backdrop-blur-sm lg:hidden" aria-hidden="true" @click="closeInspector" />
-      <main class="mx-auto flex min-h-0 w-full max-w-[1680px] flex-1 px-4 pb-4 md:px-6 md:pb-6 xl:px-8 xl:pb-8">
-        <div class="grid min-h-0 w-full flex-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div
+        v-if="isMobileInspectorModal"
+        class="fixed inset-0 z-30 bg-black/55 backdrop-blur-sm lg:hidden"
+        aria-hidden="true"
+        @click="closeInspector"
+      />
+      <main
+        class="mx-auto flex w-full max-w-[1680px] flex-1 px-4 pb-4 md:px-6 md:pb-6 xl:px-8 xl:pb-8"
+        :class="isDesktopViewport ? 'min-h-0' : 'min-h-[calc(100vh-1px)]'"
+      >
+        <div class="grid w-full flex-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]" :class="isDesktopViewport ? 'min-h-0' : ''">
           <aside
-            class="fixed inset-y-0 left-0 z-40 flex h-full w-[min(22rem,100vw)] max-w-full flex-col border-r border-[color:var(--studio-border)] bg-[color:var(--studio-surface-1)] shadow-[var(--studio-shadow)] transition-transform duration-200 ease-out lg:static lg:z-auto lg:w-auto lg:translate-x-0 lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-[color:var(--studio-border)] lg:shadow-[var(--studio-shadow-soft)]"
-            :class="isInspectorOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+            v-if="isDesktopViewport || isInspectorOpen"
+            class="flex flex-col border-[color:var(--studio-border)] bg-[color:var(--studio-surface-1)]"
+            :class="
+              isDesktopViewport
+                ? 'min-h-0 overflow-hidden rounded-[28px] border shadow-[var(--studio-shadow-soft)]'
+                : 'fixed inset-y-0 left-0 z-40 h-full w-[min(22rem,100vw)] max-w-full border-r shadow-[var(--studio-shadow)]'
+            "
+            :role="isMobileInspectorModal ? 'dialog' : undefined"
+            :aria-modal="isMobileInspectorModal ? 'true' : undefined"
+            :aria-labelledby="isMobileInspectorModal ? inspectorDialogTitleId : undefined"
+            :tabindex="isMobileInspectorModal ? -1 : undefined"
           >
             <div class="flex items-start justify-between gap-3 border-b border-[color:var(--studio-border)] px-4 py-4">
               <div>
                 <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--studio-ink-dim)]">Inspector</p>
-                <h2 class="mt-1 text-base font-semibold text-[color:var(--studio-ink)]">编辑面板</h2>
+                <h2 :id="inspectorDialogTitleId" class="mt-1 text-base font-semibold text-[color:var(--studio-ink)]">编辑面板</h2>
                 <p class="mt-1 text-xs leading-5 text-[color:var(--studio-ink-dim)]">固定侧栏只负责控件组织，滚动限制在面板内部。</p>
               </div>
               <button class="btn-soft px-3 py-2 text-xs lg:hidden" type="button" @click="closeInspector">关闭</button>
@@ -300,7 +348,12 @@ const toggleStageTools = (): void => {
               </div>
             </div>
           </aside>
-          <section class="panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px]">
+          <section
+            class="panel flex flex-1 flex-col rounded-[28px]"
+            :class="isDesktopViewport ? 'min-h-0 overflow-hidden' : 'min-h-[560px]'"
+            :inert="isMobileInspectorModal ? '' : undefined"
+            :aria-hidden="isMobileInspectorModal ? 'true' : undefined"
+          >
             <div class="flex shrink-0 flex-col gap-4 border-b border-[color:var(--studio-border)] px-4 py-4 md:px-5">
               <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div class="min-w-0">
