@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import WorkbenchHeader from './components/WorkbenchHeader.vue';
 import WorkbenchIcon from './components/WorkbenchIcon.vue';
 import InspectorSection from './components/InspectorSection.vue';
@@ -71,9 +71,21 @@ const isDesktopViewport = ref(typeof window !== 'undefined' ? window.matchMedia(
 const isFixedWorkbenchViewport = ref(
   typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px) and (min-height: 780px)').matches : false,
 );
+const inspectorPanelRef = ref<HTMLElement | null>(null);
+const inspectorTriggerButtonRef = ref<HTMLButtonElement | null>(null);
 const inspectorDialogTitleId = 'workbench-inspector-title';
 let desktopViewportMediaQuery: MediaQueryList | null = null;
 let fixedWorkbenchViewportMediaQuery: MediaQueryList | null = null;
+let isDocumentScrollLocked = false;
+let lockedScrollY = 0;
+let shouldRestoreInspectorFocus = false;
+let previousHtmlOverflow = '';
+let previousBodyOverflow = '';
+let previousBodyPosition = '';
+let previousBodyTop = '';
+let previousBodyLeft = '';
+let previousBodyRight = '';
+let previousBodyWidth = '';
 
 const applyDocumentTheme = (nextTheme: WorkbenchTheme): void => {
   if (typeof document === 'undefined') {
@@ -114,6 +126,46 @@ const stageHint = computed(() =>
 );
 const isMobileInspectorModal = computed(() => !isDesktopViewport.value && isInspectorOpen.value);
 
+const lockDocumentScroll = (): void => {
+  if (typeof document === 'undefined' || typeof window === 'undefined' || isDocumentScrollLocked) {
+    return;
+  }
+
+  const { body, documentElement } = document;
+  lockedScrollY = window.scrollY;
+  previousHtmlOverflow = documentElement.style.overflow;
+  previousBodyOverflow = body.style.overflow;
+  previousBodyPosition = body.style.position;
+  previousBodyTop = body.style.top;
+  previousBodyLeft = body.style.left;
+  previousBodyRight = body.style.right;
+  previousBodyWidth = body.style.width;
+
+  documentElement.style.overflow = 'hidden';
+  body.style.overflow = 'hidden';
+  body.style.position = 'fixed';
+  body.style.top = `-${lockedScrollY}px`;
+  body.style.left = '0';
+  body.style.right = '0';
+  body.style.width = '100%';
+  isDocumentScrollLocked = true;
+};
+const unlockDocumentScroll = (): void => {
+  if (typeof document === 'undefined' || typeof window === 'undefined' || !isDocumentScrollLocked) {
+    return;
+  }
+
+  const { body, documentElement } = document;
+  documentElement.style.overflow = previousHtmlOverflow;
+  body.style.overflow = previousBodyOverflow;
+  body.style.position = previousBodyPosition;
+  body.style.top = previousBodyTop;
+  body.style.left = previousBodyLeft;
+  body.style.right = previousBodyRight;
+  body.style.width = previousBodyWidth;
+  window.scrollTo({ top: lockedScrollY });
+  isDocumentScrollLocked = false;
+};
 const setSectionOpen = (section: SectionId, nextOpen: boolean): void => {
   sectionOpen[section] = nextOpen;
 };
@@ -140,15 +192,32 @@ watch(isDesktopViewport, (next) => {
   }
 });
 watch(theme, applyDocumentTheme);
+watch(isMobileInspectorModal, async (next) => {
+  if (next) {
+    lockDocumentScroll();
+    await nextTick();
+    inspectorPanelRef.value?.focus();
+    return;
+  }
+
+  unlockDocumentScroll();
+  if (shouldRestoreInspectorFocus && !isDesktopViewport.value) {
+    await nextTick();
+    inspectorTriggerButtonRef.value?.focus();
+  }
+  shouldRestoreInspectorFocus = false;
+});
 
 const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
 const toggleTheme = (): void => {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
 };
 const openInspector = (): void => {
+  shouldRestoreInspectorFocus = false;
   isInspectorOpen.value = true;
 };
-const closeInspector = (): void => {
+const closeInspector = (options: { restoreFocus?: boolean } = {}): void => {
+  shouldRestoreInspectorFocus = Boolean(options.restoreFocus);
   isInspectorOpen.value = false;
 };
 const toggleStageTools = (): void => {
@@ -160,6 +229,14 @@ const handleDesktopViewportChange = (event: MediaQueryListEvent): void => {
 const handleFixedWorkbenchViewportChange = (event: MediaQueryListEvent): void => {
   isFixedWorkbenchViewport.value = event.matches;
 };
+const handleWindowKeydown = (event: KeyboardEvent): void => {
+  if (event.key !== 'Escape' || !isMobileInspectorModal.value) {
+    return;
+  }
+
+  event.preventDefault();
+  closeInspector({ restoreFocus: true });
+};
 
 onMounted(() => {
   applyDocumentTheme(theme.value);
@@ -169,12 +246,15 @@ onMounted(() => {
   isFixedWorkbenchViewport.value = fixedWorkbenchViewportMediaQuery.matches;
   desktopViewportMediaQuery.addEventListener('change', handleDesktopViewportChange);
   fixedWorkbenchViewportMediaQuery.addEventListener('change', handleFixedWorkbenchViewportChange);
+  window.addEventListener('keydown', handleWindowKeydown);
 });
 
 onBeforeUnmount(() => {
+  unlockDocumentScroll();
   clearDocumentTheme();
   desktopViewportMediaQuery?.removeEventListener('change', handleDesktopViewportChange);
   fixedWorkbenchViewportMediaQuery?.removeEventListener('change', handleFixedWorkbenchViewportChange);
+  window.removeEventListener('keydown', handleWindowKeydown);
 });
 </script>
 
@@ -207,7 +287,7 @@ onBeforeUnmount(() => {
         v-if="isMobileInspectorModal"
         class="fixed inset-0 z-30 bg-[color:var(--studio-backdrop)] backdrop-blur-sm lg:hidden"
         aria-hidden="true"
-        @click="closeInspector"
+        @click="closeInspector({ restoreFocus: true })"
       />
       <main
         class="mx-auto flex w-full max-w-[1680px] flex-1 px-4 pb-4 md:px-6 md:pb-6 xl:px-8 xl:pb-8"
@@ -219,6 +299,7 @@ onBeforeUnmount(() => {
         >
           <aside
             v-if="isDesktopViewport || isInspectorOpen"
+            ref="inspectorPanelRef"
             class="workbench-frame flex flex-col"
             :class="
               isDesktopViewport
@@ -238,7 +319,7 @@ onBeforeUnmount(() => {
                 <h2 :id="inspectorDialogTitleId" class="mt-1 text-base font-semibold text-[color:var(--studio-ink)]">编辑面板</h2>
                 <p class="mt-1 text-xs leading-5 text-[color:var(--studio-ink-dim)]">固定侧栏只负责控件组织，滚动限制在面板内部。</p>
               </div>
-              <button class="mobile-toggle-btn lg:hidden" type="button" @click="closeInspector">关闭</button>
+              <button class="mobile-toggle-btn lg:hidden" type="button" @click="closeInspector({ restoreFocus: true })">关闭</button>
             </div>
             <div class="px-4 py-4" :class="isFixedWorkbenchViewport ? 'min-h-0 flex-1 overflow-y-auto' : ''">
               <div class="space-y-4 pb-4">
@@ -393,7 +474,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="flex items-center gap-2 lg:hidden">
                   <button class="mobile-toggle-btn" type="button" @click="toggleStageTools">{{ isStageToolsOpen ? '收起工具条' : '展开工具条' }}</button>
-                  <button class="mobile-toggle-btn" type="button" @click="openInspector">检查器</button>
+                  <button ref="inspectorTriggerButtonRef" class="mobile-toggle-btn" type="button" @click="openInspector">检查器</button>
                 </div>
               </div>
               <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
