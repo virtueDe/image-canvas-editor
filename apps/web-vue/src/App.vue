@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import WorkbenchHeader from './components/WorkbenchHeader.vue';
 import WorkbenchIcon from './components/WorkbenchIcon.vue';
 import InspectorSection from './components/InspectorSection.vue';
@@ -74,45 +74,6 @@ const isFixedWorkbenchViewport = ref(
 const inspectorDialogTitleId = 'workbench-inspector-title';
 let desktopViewportMediaQuery: MediaQueryList | null = null;
 let fixedWorkbenchViewportMediaQuery: MediaQueryList | null = null;
-const themeStyle = computed<CSSProperties>(() =>
-  theme.value === 'dark'
-    ? {
-        colorScheme: 'dark',
-        '--studio-bg': '#14110e',
-        '--studio-surface-1': '#1c1814',
-        '--studio-surface-2': '#231f1b',
-        '--studio-surface-3': '#2a261f',
-        '--studio-border': 'rgba(255, 239, 220, 0.08)',
-        '--studio-ink': '#f5efe7',
-        '--studio-ink-muted': '#d4c8bb',
-        '--studio-ink-dim': '#a89f92',
-        '--studio-accent': '#e9c083',
-        '--studio-accent-strong': '#f2d3a0',
-        '--studio-accent-ink': '#2b1d0f',
-        '--studio-track': '#3a332c',
-        '--studio-thumb': '#e9c083',
-        '--studio-shadow': '0 24px 60px rgba(7, 5, 3, 0.55)',
-        '--studio-shadow-soft': '0 12px 30px rgba(7, 5, 3, 0.35)',
-      }
-    : {
-        colorScheme: 'light',
-        '--studio-bg': '#f5efe6',
-        '--studio-surface-1': '#fffaf2',
-        '--studio-surface-2': '#f5eadb',
-        '--studio-surface-3': '#eadac7',
-        '--studio-border': 'rgba(92, 64, 34, 0.18)',
-        '--studio-ink': '#2f2214',
-        '--studio-ink-muted': '#5a4733',
-        '--studio-ink-dim': '#846f58',
-        '--studio-accent': '#a86a24',
-        '--studio-accent-strong': '#8f5716',
-        '--studio-accent-ink': '#fff7eb',
-        '--studio-track': '#d7c2ab',
-        '--studio-thumb': '#b8742b',
-        '--studio-shadow': '0 24px 60px rgba(111, 79, 43, 0.18)',
-        '--studio-shadow-soft': '0 12px 30px rgba(111, 79, 43, 0.12)',
-      },
-);
 
 const isCropMode = computed(() => Boolean(state.value.cropMode));
 const stageModeLabel = computed(() => {
@@ -201,7 +162,6 @@ onBeforeUnmount(() => {
     class="studio-shell"
     :class="isFixedWorkbenchViewport ? 'h-screen overflow-hidden' : 'min-h-screen'"
     :data-theme="theme"
-    :style="themeStyle"
   >
     <div class="flex flex-col" :class="isFixedWorkbenchViewport ? 'h-full' : 'min-h-screen'">
       <div
@@ -224,7 +184,7 @@ onBeforeUnmount(() => {
       </div>
       <div
         v-if="isMobileInspectorModal"
-        class="fixed inset-0 z-30 bg-black/55 backdrop-blur-sm lg:hidden"
+        class="fixed inset-0 z-30 bg-[color:var(--studio-backdrop)] backdrop-blur-sm lg:hidden"
         aria-hidden="true"
         @click="closeInspector"
       />
@@ -238,13 +198,13 @@ onBeforeUnmount(() => {
         >
           <aside
             v-if="isDesktopViewport || isInspectorOpen"
-            class="flex flex-col border-[color:var(--studio-border)] bg-[color:var(--studio-surface-1)]"
+            class="workbench-frame flex flex-col"
             :class="
               isDesktopViewport
                 ? isFixedWorkbenchViewport
-                  ? 'min-h-0 overflow-hidden rounded-[28px] border shadow-[var(--studio-shadow-soft)]'
-                  : 'rounded-[28px] border shadow-[var(--studio-shadow-soft)]'
-                : 'fixed inset-y-0 left-0 z-40 h-full w-[min(22rem,100vw)] max-w-full border-r shadow-[var(--studio-shadow)]'
+                  ? 'min-h-0 overflow-hidden rounded-[28px]'
+                  : 'rounded-[28px]'
+                : 'fixed inset-y-0 left-0 z-40 h-full w-[min(22rem,100vw)] max-w-full rounded-r-[28px] border-l-0 shadow-[var(--studio-shadow)]'
             "
             :role="isMobileInspectorModal ? 'dialog' : undefined"
             :aria-modal="isMobileInspectorModal ? 'true' : undefined"
@@ -257,13 +217,13 @@ onBeforeUnmount(() => {
                 <h2 :id="inspectorDialogTitleId" class="mt-1 text-base font-semibold text-[color:var(--studio-ink)]">编辑面板</h2>
                 <p class="mt-1 text-xs leading-5 text-[color:var(--studio-ink-dim)]">固定侧栏只负责控件组织，滚动限制在面板内部。</p>
               </div>
-              <button class="btn-soft px-3 py-2 text-xs lg:hidden" type="button" @click="closeInspector">关闭</button>
+              <button class="mobile-toggle-btn lg:hidden" type="button" @click="closeInspector">关闭</button>
             </div>
             <div class="px-4 py-4" :class="isFixedWorkbenchViewport ? 'min-h-0 flex-1 overflow-y-auto' : ''">
               <div class="space-y-4 pb-4">
                 <InspectorSection title="图片信息" :open="sectionOpen.meta" @toggle="(next) => setSectionOpen('meta', next)">
                   <div class="mb-3 flex items-center justify-end">
-                    <button class="btn-soft px-2 py-1 text-xs" type="button" :disabled="!hasImage || isCropMode" @click="resetEdits">重置全部</button>
+                    <button class="mini-action-btn" type="button" :disabled="!hasImage || isCropMode" @click="resetEdits">重置全部</button>
                   </div>
                   <dl class="grid grid-cols-[80px_1fr] gap-y-2 text-sm text-[color:var(--studio-ink-muted)]">
                     <template v-for="item in imageMetaRows" :key="item.label">
@@ -274,19 +234,19 @@ onBeforeUnmount(() => {
                 </InspectorSection>
                 <InspectorSection title="旋转与翻转" :hint="`当前角度 ${rotationText}`" :open="sectionOpen.transform" @toggle="(next) => setSectionOpen('transform', next)">
                   <div class="grid grid-cols-2 gap-2">
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(-90)">
+                    <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(-90)">
                       <WorkbenchIcon name="rotate-left" :size="16" />
                       <span>左转 90°</span>
                     </button>
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(90)">
+                    <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!hasImage || isCropMode" @click="rotateBy(90)">
                       <WorkbenchIcon name="rotate-right" :size="16" />
                       <span>右转 90°</span>
                     </button>
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipX')">
+                    <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipX')">
                       <WorkbenchIcon name="flip-horizontal" :size="16" />
                       <span>水平翻转</span>
                     </button>
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipY')">
+                    <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!hasImage || isCropMode" @click="toggleFlip('flipY')">
                       <WorkbenchIcon name="flip-vertical" :size="16" />
                       <span>垂直翻转</span>
                     </button>
@@ -301,19 +261,19 @@ onBeforeUnmount(() => {
                 </InspectorSection>
                 <InspectorSection title="裁剪" hint="拖拽框选，拖动内部移动，四角缩放" :tone="isCropMode ? 'accent' : 'muted'" :open="sectionOpen.crop" @toggle="(next) => setSectionOpen('crop', next)">
                   <div class="grid grid-cols-2 gap-2">
-                    <button class="btn-soft" type="button" :disabled="!hasImage || isCropMode" @click="enterCropMode">
+                    <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!hasImage || isCropMode" @click="enterCropMode">
                       <WorkbenchIcon name="crop" :size="16" />
                       <span>进入裁剪</span>
                     </button>
-                    <button class="btn-soft" type="button" :disabled="!hasImage" @click="resetCrop">
+                    <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!hasImage" @click="resetCrop">
                       <WorkbenchIcon name="crop-cancel" :size="16" />
                       <span>清除裁剪</span>
                     </button>
-                    <button class="btn-primary" type="button" :disabled="!canApplyCrop" @click="applyCrop">
+                    <button class="btn-primary workbench-icon-btn w-full justify-start" type="button" :disabled="!canApplyCrop" @click="applyCrop">
                       <WorkbenchIcon name="crop-apply" :size="16" />
                       <span>应用裁剪</span>
                     </button>
-                    <button class="btn-soft" type="button" :disabled="!canCancelCrop" @click="cancelCrop">
+                    <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!canCancelCrop" @click="cancelCrop">
                       <WorkbenchIcon name="crop-cancel" :size="16" />
                       <span>取消裁剪</span>
                     </button>
@@ -323,11 +283,11 @@ onBeforeUnmount(() => {
                 <InspectorSection title="文字" :hint="textOverlayHint" :tone="hasTextOverlay && !isCropMode ? 'accent' : 'muted'" :open="sectionOpen.text" @toggle="(next) => setSectionOpen('text', next)">
                   <div class="text-tool-stack space-y-4">
                     <div class="grid grid-cols-2 gap-2">
-                      <button class="btn-primary" type="button" :disabled="!canEditText" @click="ensureTextOverlay">
+                      <button class="btn-primary workbench-icon-btn w-full justify-start" type="button" :disabled="!canEditText" @click="ensureTextOverlay">
                         <WorkbenchIcon name="text" :size="16" />
                         <span>{{ hasTextOverlay ? '聚焦文字' : '添加文字' }}</span>
                       </button>
-                      <button class="btn-soft" type="button" :disabled="!hasTextOverlay || !canEditText" @click="removeTextOverlay">
+                      <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!hasTextOverlay || !canEditText" @click="removeTextOverlay">
                         <WorkbenchIcon name="text-remove" :size="16" />
                         <span>删除文字</span>
                       </button>
@@ -395,7 +355,7 @@ onBeforeUnmount(() => {
             </div>
           </aside>
           <section
-            class="panel flex flex-1 flex-col rounded-[28px]"
+            class="workbench-panel flex flex-1 flex-col"
             :class="isFixedWorkbenchViewport ? 'min-h-0 overflow-hidden' : 'min-h-[560px]'"
             :inert="isMobileInspectorModal ? '' : undefined"
             :aria-hidden="isMobileInspectorModal ? 'true' : undefined"
@@ -405,14 +365,14 @@ onBeforeUnmount(() => {
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
                     <span class="text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--studio-ink-dim)]">Stage</span>
-                    <span class="rounded-full border border-[color:var(--studio-border)] bg-[color:var(--studio-surface-2)] px-2 py-1 text-[11px] text-[color:var(--studio-ink-muted)]">{{ stageModeLabel }}</span>
+                    <span class="status-pill">{{ stageModeLabel }}</span>
                   </div>
                   <h2 class="mt-2 panel-title">编辑工作台</h2>
                   <p class="mt-2 max-w-2xl text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ stageHint }}</p>
                 </div>
                 <div class="flex items-center gap-2 lg:hidden">
-                  <button class="btn-soft px-3 py-2 text-xs" type="button" @click="toggleStageTools">{{ isStageToolsOpen ? '收起工具条' : '展开工具条' }}</button>
-                  <button class="btn-soft px-3 py-2 text-xs" type="button" @click="openInspector">检查器</button>
+                  <button class="mobile-toggle-btn" type="button" @click="toggleStageTools">{{ isStageToolsOpen ? '收起工具条' : '展开工具条' }}</button>
+                  <button class="mobile-toggle-btn" type="button" @click="openInspector">检查器</button>
                 </div>
               </div>
               <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -425,11 +385,11 @@ onBeforeUnmount(() => {
                   <p class="text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasImage ? '视图动作只影响预览窗口，不会直接写坏原图。' : '上传图片后即可启用撤销、缩放与视图复位。' }}</p>
                 </div>
                 <div class="flex-wrap gap-2" :class="[isStageToolsOpen ? 'flex' : 'hidden', 'lg:flex']">
-                  <button class="btn-soft inline-flex items-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!canUndo || isCropMode" @click="undo"><WorkbenchIcon name="undo" :size="16" /><span>撤销</span></button>
-                  <button class="btn-soft inline-flex items-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!canRedo || isCropMode" @click="redo"><WorkbenchIcon name="redo" :size="16" /><span>重做</span></button>
-                  <button class="btn-soft inline-flex items-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasImage || isCropMode" @click="zoomOut"><WorkbenchIcon name="zoom-out" :size="16" /><span>缩小</span></button>
-                  <button class="btn-soft inline-flex items-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasImage || isCropMode" @click="zoomIn"><WorkbenchIcon name="zoom-in" :size="16" /><span>放大</span></button>
-                  <button class="btn-soft inline-flex items-center gap-2 px-3 py-2 text-sm" type="button" :disabled="!hasImage || isCropMode" @click="resetViewport"><WorkbenchIcon name="viewport-reset" :size="16" /><span>复位视图</span></button>
+                  <button class="toolbar-action-btn" type="button" :disabled="!canUndo || isCropMode" @click="undo"><WorkbenchIcon name="undo" :size="16" /><span>撤销</span></button>
+                  <button class="toolbar-action-btn" type="button" :disabled="!canRedo || isCropMode" @click="redo"><WorkbenchIcon name="redo" :size="16" /><span>重做</span></button>
+                  <button class="toolbar-action-btn" type="button" :disabled="!hasImage || isCropMode" @click="zoomOut"><WorkbenchIcon name="zoom-out" :size="16" /><span>缩小</span></button>
+                  <button class="toolbar-action-btn" type="button" :disabled="!hasImage || isCropMode" @click="zoomIn"><WorkbenchIcon name="zoom-in" :size="16" /><span>放大</span></button>
+                  <button class="toolbar-action-btn" type="button" :disabled="!hasImage || isCropMode" @click="resetViewport"><WorkbenchIcon name="viewport-reset" :size="16" /><span>复位视图</span></button>
                 </div>
               </div>
             </div>

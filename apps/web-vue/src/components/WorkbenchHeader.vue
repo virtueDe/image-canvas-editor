@@ -33,15 +33,15 @@ const themeAriaLabel = computed(() =>
 <template>
   <header class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
     <div>
-      <p class="text-sm tracking-[0.3em] text-cyan-300/80 uppercase">Canvas Image Editor</p>
+      <p class="studio-header-eyebrow text-sm tracking-[0.3em] uppercase">Canvas Image Editor</p>
       <h1 class="mt-2 text-3xl font-bold md:text-4xl">在线图片编辑器</h1>
-      <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+      <p class="studio-header-copy mt-2 max-w-3xl text-sm leading-6">
         用最少的概念做最有用的事：Vue 只做 UI，Canvas + TypeScript 内核只做编辑。
       </p>
     </div>
-    <div class="panel flex flex-wrap items-center gap-2 px-4 py-3">
+    <div class="workbench-frame flex flex-wrap items-center gap-2 rounded-4 px-4 py-3">
       <button
-        class="btn-soft inline-flex items-center gap-2 whitespace-nowrap"
+        class="theme-toggle-btn"
         type="button"
         :aria-label="themeAriaLabel"
         :aria-pressed="isDarkTheme"
@@ -51,7 +51,7 @@ const themeAriaLabel = computed(() =>
         <span>{{ currentThemeLabel }}</span>
       </button>
       <label
-        class="btn-primary inline-flex cursor-pointer items-center gap-2 whitespace-nowrap"
+        class="header-primary-btn cursor-pointer"
         :class="{ 'pointer-events-none opacity-60': props.editingLocked }"
       >
         <input class="hidden" type="file" accept="image/*" :disabled="props.editingLocked" @change="handleFileChange" />
@@ -59,7 +59,7 @@ const themeAriaLabel = computed(() =>
         <span>上传图片</span>
       </label>
       <button
-        class="btn-soft inline-flex items-center gap-2 whitespace-nowrap"
+        class="header-action-btn"
         type="button"
         :disabled="!props.hasImage || props.editingLocked"
         @click="saveDraft"
@@ -68,7 +68,7 @@ const themeAriaLabel = computed(() =>
         <span>保存草稿</span>
       </button>
       <button
-        class="btn-soft inline-flex items-center gap-2 whitespace-nowrap"
+        class="header-action-btn"
         type="button"
         :disabled="props.editingLocked"
         @click="restoreDraft"
@@ -77,7 +77,7 @@ const themeAriaLabel = computed(() =>
         <span>恢复草稿</span>
       </button>
       <button
-        class="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
+        class="header-primary-btn"
         type="button"
         :disabled="!props.hasImage || props.editingLocked"
         @click="downloadImage"

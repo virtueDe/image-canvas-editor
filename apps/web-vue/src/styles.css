@@ -1,6 +1,5 @@
 /* 变量 */
 :root {
-  color-scheme: dark;
   font-family:
     "Source Han Sans SC",
     "Noto Sans SC",
@@ -8,21 +7,6 @@
     "Microsoft YaHei",
     "Segoe UI",
     sans-serif;
-  --studio-bg: #14110e;
-  --studio-surface-1: #1c1814;
-  --studio-surface-2: #231f1b;
-  --studio-surface-3: #2a261f;
-  --studio-border: rgba(255, 239, 220, 0.08);
-  --studio-ink: #f5efe7;
-  --studio-ink-muted: #d4c8bb;
-  --studio-ink-dim: #a89f92;
-  --studio-accent: #e9c083;
-  --studio-accent-strong: #f2d3a0;
-  --studio-accent-ink: #2b1d0f;
-  --studio-track: #3a332c;
-  --studio-thumb: #e9c083;
-  --studio-shadow: 0 24px 60px rgba(7, 5, 3, 0.55);
-  --studio-shadow-soft: 0 12px 30px rgba(7, 5, 3, 0.35);
 }
 
 /* 基础元素 */
@@ -34,26 +18,101 @@ html,
 body {
   min-height: 100%;
   margin: 0;
-  background: var(--studio-bg);
-  color: var(--studio-ink);
+  background: #14110e;
+  color: #f5efe7;
 }
 
 #app {
   min-height: 100vh;
 }
 
-.studio-shell {
-  background:
-    radial-gradient(circle at top, rgba(233, 192, 131, 0.14), transparent 45%),
-    linear-gradient(180deg, rgba(28, 24, 20, 0.98), var(--studio-bg));
-  color: var(--studio-ink);
+.studio-shell[data-theme='dark'] {
+  color-scheme: dark;
+  --studio-bg: #14110e;
+  --studio-shell-glow: rgba(233, 192, 131, 0.14);
+  --studio-shell-tint: rgba(28, 24, 20, 0.98);
+  --studio-surface-1: #1c1814;
+  --studio-surface-2: #231f1b;
+  --studio-surface-3: #2a261f;
+  --studio-surface-overlay: rgba(28, 24, 20, 0.82);
+  --studio-surface-overlay-strong: rgba(23, 20, 16, 0.86);
+  --studio-empty-surface: rgba(28, 24, 20, 0.64);
+  --studio-input-surface: rgba(18, 15, 12, 0.76);
+  --studio-chip-surface: rgba(25, 21, 17, 0.72);
+  --studio-chip-surface-hover: rgba(34, 29, 24, 0.88);
+  --studio-border: rgba(255, 239, 220, 0.08);
+  --studio-border-strong: rgba(255, 239, 220, 0.18);
+  --studio-ink: #f5efe7;
+  --studio-ink-muted: #d4c8bb;
+  --studio-ink-dim: #a89f92;
+  --studio-accent: #e9c083;
+  --studio-accent-strong: #f2d3a0;
+  --studio-accent-ink: #2b1d0f;
+  --studio-accent-ring: rgba(233, 192, 131, 0.16);
+  --studio-accent-ring-strong: rgba(233, 192, 131, 0.4);
+  --studio-accent-shadow: 0 12px 24px rgba(231, 192, 136, 0.28);
+  --studio-track: #3a332c;
+  --studio-thumb: #e9c083;
+  --studio-thumb-border: rgba(43, 29, 15, 0.5);
+  --studio-canvas-base: #211c17;
+  --studio-canvas-grid: rgba(255, 245, 232, 0.045);
+  --studio-canvas-inset: rgba(255, 239, 220, 0.05);
+  --studio-shadow: 0 24px 60px rgba(7, 5, 3, 0.55);
+  --studio-shadow-soft: 0 12px 30px rgba(7, 5, 3, 0.35);
+  --studio-backdrop: rgba(0, 0, 0, 0.55);
 }
 
-.studio-header .text-cyan-300\/80 {
+.studio-shell[data-theme='light'] {
+  color-scheme: light;
+  --studio-bg: #f2ecdf;
+  --studio-shell-glow: rgba(194, 132, 48, 0.18);
+  --studio-shell-tint: rgba(252, 247, 240, 0.96);
+  --studio-surface-1: #fffaf2;
+  --studio-surface-2: #f6ecde;
+  --studio-surface-3: #ebdcc7;
+  --studio-surface-overlay: rgba(255, 250, 242, 0.88);
+  --studio-surface-overlay-strong: rgba(255, 248, 238, 0.92);
+  --studio-empty-surface: rgba(250, 242, 230, 0.82);
+  --studio-input-surface: rgba(255, 249, 241, 0.94);
+  --studio-chip-surface: rgba(255, 250, 243, 0.92);
+  --studio-chip-surface-hover: rgba(245, 233, 217, 0.96);
+  --studio-border: rgba(112, 84, 51, 0.18);
+  --studio-border-strong: rgba(112, 84, 51, 0.28);
+  --studio-ink: #2f2214;
+  --studio-ink-muted: #5a4733;
+  --studio-ink-dim: #846f58;
+  --studio-accent: #a86a24;
+  --studio-accent-strong: #8f5716;
+  --studio-accent-ink: #fff7eb;
+  --studio-accent-ring: rgba(168, 106, 36, 0.16);
+  --studio-accent-ring-strong: rgba(168, 106, 36, 0.35);
+  --studio-accent-shadow: 0 12px 24px rgba(168, 106, 36, 0.22);
+  --studio-track: #d7c2ab;
+  --studio-thumb: #b8742b;
+  --studio-thumb-border: rgba(143, 87, 22, 0.28);
+  --studio-canvas-base: #efe5d6;
+  --studio-canvas-grid: rgba(109, 85, 57, 0.08);
+  --studio-canvas-inset: rgba(112, 84, 51, 0.12);
+  --studio-shadow: 0 24px 60px rgba(111, 79, 43, 0.18);
+  --studio-shadow-soft: 0 12px 30px rgba(111, 79, 43, 0.12);
+  --studio-backdrop: rgba(70, 55, 36, 0.32);
+}
+
+.studio-shell {
+  background:
+    radial-gradient(circle at top, var(--studio-shell-glow), transparent 45%),
+    linear-gradient(180deg, var(--studio-shell-tint), var(--studio-bg));
+  color: var(--studio-ink);
+  transition:
+    background 0.24s ease,
+    color 0.24s ease;
+}
+
+.studio-header-eyebrow {
   color: var(--studio-accent);
 }
 
-.studio-header .text-slate-300 {
+.studio-header-copy {
   color: var(--studio-ink-muted);
 }
 
@@ -71,7 +130,7 @@ button:disabled {
 .studio-readout {
   border: 1px solid var(--studio-border);
   border-radius: 14px;
-  background: rgba(28, 24, 20, 0.82);
+  background: var(--studio-surface-overlay);
   box-shadow: var(--studio-shadow-soft);
 }
 
@@ -98,26 +157,26 @@ button:disabled {
 
 .stage-empty {
   border: 1px dashed var(--studio-border);
-  background: rgba(28, 24, 20, 0.64);
+  background: var(--studio-empty-surface);
   color: var(--studio-ink-muted);
 }
 
 .editor-stage {
   border-radius: 16px;
-  background-color: #211c17;
+  background-color: var(--studio-canvas-base);
   background-image:
-    linear-gradient(45deg, rgba(255, 245, 232, 0.045) 25%, transparent 25%, transparent 75%, rgba(255, 245, 232, 0.045) 75%),
-    linear-gradient(45deg, rgba(255, 245, 232, 0.045) 25%, transparent 25%, transparent 75%, rgba(255, 245, 232, 0.045) 75%);
+    linear-gradient(45deg, var(--studio-canvas-grid) 25%, transparent 25%, transparent 75%, var(--studio-canvas-grid) 75%),
+    linear-gradient(45deg, var(--studio-canvas-grid) 25%, transparent 25%, transparent 75%, var(--studio-canvas-grid) 75%);
   background-position:
     0 0,
     12px 12px;
   background-size: 24px 24px;
-  box-shadow: inset 0 0 0 1px rgba(255, 239, 220, 0.05);
+  box-shadow: inset 0 0 0 1px var(--studio-canvas-inset);
 }
 
 .stage-hint {
   border: 1px solid var(--studio-border);
-  background: rgba(23, 20, 16, 0.86);
+  background: var(--studio-surface-overlay-strong);
   color: var(--studio-ink);
   box-shadow: var(--studio-shadow-soft);
 }
@@ -139,7 +198,7 @@ button:disabled {
 
 .preset-btn.btn-soft {
   background: var(--studio-surface-3);
-  border-color: rgba(255, 239, 220, 0.18);
+  border-color: var(--studio-border-strong);
   color: var(--studio-ink-muted);
 }
 
@@ -149,14 +208,14 @@ button:disabled {
 
 .preset-btn.btn-primary {
   box-shadow:
-    0 0 0 1px rgba(233, 192, 131, 0.55),
-    0 14px 26px rgba(231, 192, 136, 0.35);
+    0 0 0 1px var(--studio-accent-ring-strong),
+    var(--studio-accent-shadow);
 }
 
 .text-tool-input {
-  border: 1px solid rgba(255, 239, 220, 0.18);
+  border: 1px solid var(--studio-border-strong);
   border-radius: 12px;
-  background: rgba(18, 15, 12, 0.76);
+  background: var(--studio-input-surface);
   padding: 10px 12px;
   transition:
     border-color 0.2s ease,
@@ -170,8 +229,8 @@ button:disabled {
 
 .text-tool-input:focus-visible {
   outline: none;
-  border-color: rgba(233, 192, 131, 0.55);
-  box-shadow: 0 0 0 3px rgba(233, 192, 131, 0.16);
+  border-color: var(--studio-accent-strong);
+  box-shadow: 0 0 0 3px var(--studio-accent-ring);
 }
 
 .text-color-grid {
@@ -183,9 +242,9 @@ button:disabled {
   align-items: center;
   gap: 10px;
   width: 100%;
-  border: 1px solid rgba(255, 239, 220, 0.14);
+  border: 1px solid var(--studio-border);
   border-radius: 12px;
-  background: rgba(25, 21, 17, 0.72);
+  background: var(--studio-chip-surface);
   padding: 10px 12px;
   transition:
     transform 0.16s ease,
@@ -195,14 +254,14 @@ button:disabled {
 }
 
 .text-color-chip:hover {
-  border-color: rgba(233, 192, 131, 0.3);
-  background: rgba(34, 29, 24, 0.88);
+  border-color: var(--studio-border-strong);
+  background: var(--studio-chip-surface-hover);
   transform: translateY(-1px);
 }
 
 .text-color-chip.is-active {
-  border-color: rgba(233, 192, 131, 0.58);
-  box-shadow: 0 0 0 1px rgba(233, 192, 131, 0.18);
+  border-color: var(--studio-accent-strong);
+  box-shadow: 0 0 0 1px var(--studio-accent-ring);
 }
 
 .text-color-chip__swatch {
@@ -221,7 +280,7 @@ button:disabled {
 }
 
 .text-helper {
-  border-top: 1px solid rgba(255, 239, 220, 0.08);
+  border-top: 1px solid var(--studio-border);
   padding-top: 12px;
 }
 
@@ -249,35 +308,35 @@ button:disabled {
 .input-range::-webkit-slider-runnable-track {
   height: 8px;
   border-radius: 999px;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)) var(--studio-track);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  background: linear-gradient(120deg, var(--studio-border), transparent) var(--studio-track);
+  box-shadow: inset 0 0 0 1px var(--studio-border);
 }
 
 .input-range::-webkit-slider-thumb {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(43, 29, 15, 0.5);
+  border: 2px solid var(--studio-thumb-border);
   border-radius: 999px;
   background: var(--studio-thumb);
   appearance: none;
   margin-top: -5px;
-  box-shadow: 0 0 0 4px rgba(233, 192, 131, 0.18);
+  box-shadow: 0 0 0 4px var(--studio-accent-ring);
 }
 
 .input-range::-moz-range-track {
   height: 8px;
   border-radius: 999px;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)) var(--studio-track);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  background: linear-gradient(120deg, var(--studio-border), transparent) var(--studio-track);
+  box-shadow: inset 0 0 0 1px var(--studio-border);
 }
 
 .input-range::-moz-range-thumb {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(43, 29, 15, 0.5);
+  border: 2px solid var(--studio-thumb-border);
   border-radius: 999px;
   background: var(--studio-thumb);
-  box-shadow: 0 0 0 4px rgba(233, 192, 131, 0.18);
+  box-shadow: 0 0 0 4px var(--studio-accent-ring);
 }
 
 /* Inspector 区块 */
@@ -294,8 +353,8 @@ button:disabled {
 }
 
 .inspector-section.is-active {
-  border-color: rgba(233, 192, 131, 0.4);
-  box-shadow: 0 0 0 1px rgba(233, 192, 131, 0.15), var(--studio-shadow-soft);
+  border-color: var(--studio-accent-ring-strong);
+  box-shadow: 0 0 0 1px var(--studio-accent-ring), var(--studio-shadow-soft);
 }
 
 .inspector-section__title {
@@ -331,13 +390,13 @@ button:disabled {
 }
 
 .inspector-section__trigger:hover {
-  border-color: rgba(233, 192, 131, 0.4);
+  border-color: var(--studio-border-strong);
   background: var(--studio-surface-3);
 }
 
 .inspector-section__trigger:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(233, 192, 131, 0.3);
+  box-shadow: 0 0 0 2px var(--studio-accent-ring-strong);
 }
 
 .inspector-section__chevron {
