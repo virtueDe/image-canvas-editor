@@ -68,8 +68,12 @@ const theme = ref<WorkbenchTheme>('dark');
 const isInspectorOpen = ref(false);
 const isStageToolsOpen = ref(false);
 const isDesktopViewport = ref(typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false);
+const isFixedWorkbenchViewport = ref(
+  typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px) and (min-height: 780px)').matches : false,
+);
 const inspectorDialogTitleId = 'workbench-inspector-title';
 let desktopViewportMediaQuery: MediaQueryList | null = null;
+let fixedWorkbenchViewportMediaQuery: MediaQueryList | null = null;
 const themeStyle = computed<CSSProperties>(() =>
   theme.value === 'dark'
     ? {
@@ -173,26 +177,33 @@ const toggleStageTools = (): void => {
 const handleDesktopViewportChange = (event: MediaQueryListEvent): void => {
   isDesktopViewport.value = event.matches;
 };
+const handleFixedWorkbenchViewportChange = (event: MediaQueryListEvent): void => {
+  isFixedWorkbenchViewport.value = event.matches;
+};
 
 onMounted(() => {
   desktopViewportMediaQuery = window.matchMedia('(min-width: 1024px)');
+  fixedWorkbenchViewportMediaQuery = window.matchMedia('(min-width: 1024px) and (min-height: 780px)');
   isDesktopViewport.value = desktopViewportMediaQuery.matches;
+  isFixedWorkbenchViewport.value = fixedWorkbenchViewportMediaQuery.matches;
   desktopViewportMediaQuery.addEventListener('change', handleDesktopViewportChange);
+  fixedWorkbenchViewportMediaQuery.addEventListener('change', handleFixedWorkbenchViewportChange);
 });
 
 onBeforeUnmount(() => {
   desktopViewportMediaQuery?.removeEventListener('change', handleDesktopViewportChange);
+  fixedWorkbenchViewportMediaQuery?.removeEventListener('change', handleFixedWorkbenchViewportChange);
 });
 </script>
 
 <template>
   <div
     class="studio-shell"
-    :class="isDesktopViewport ? 'h-screen overflow-hidden' : 'min-h-screen'"
+    :class="isFixedWorkbenchViewport ? 'h-screen overflow-hidden' : 'min-h-screen'"
     :data-theme="theme"
     :style="themeStyle"
   >
-    <div class="flex flex-col" :class="isDesktopViewport ? 'h-full' : 'min-h-screen'">
+    <div class="flex flex-col" :class="isFixedWorkbenchViewport ? 'h-full' : 'min-h-screen'">
       <div
         class="studio-header shrink-0 px-4 py-4 md:px-6 md:py-5 xl:px-8 xl:py-6"
         :inert="isMobileInspectorModal ? '' : undefined"
@@ -219,15 +230,20 @@ onBeforeUnmount(() => {
       />
       <main
         class="mx-auto flex w-full max-w-[1680px] flex-1 px-4 pb-4 md:px-6 md:pb-6 xl:px-8 xl:pb-8"
-        :class="isDesktopViewport ? 'min-h-0' : 'min-h-[calc(100vh-1px)]'"
+        :class="isFixedWorkbenchViewport ? 'min-h-0' : ''"
       >
-        <div class="grid w-full flex-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]" :class="isDesktopViewport ? 'min-h-0' : ''">
+        <div
+          class="grid w-full flex-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]"
+          :class="isFixedWorkbenchViewport ? 'min-h-0' : ''"
+        >
           <aside
             v-if="isDesktopViewport || isInspectorOpen"
             class="flex flex-col border-[color:var(--studio-border)] bg-[color:var(--studio-surface-1)]"
             :class="
               isDesktopViewport
-                ? 'min-h-0 overflow-hidden rounded-[28px] border shadow-[var(--studio-shadow-soft)]'
+                ? isFixedWorkbenchViewport
+                  ? 'min-h-0 overflow-hidden rounded-[28px] border shadow-[var(--studio-shadow-soft)]'
+                  : 'rounded-[28px] border shadow-[var(--studio-shadow-soft)]'
                 : 'fixed inset-y-0 left-0 z-40 h-full w-[min(22rem,100vw)] max-w-full border-r shadow-[var(--studio-shadow)]'
             "
             :role="isMobileInspectorModal ? 'dialog' : undefined"
@@ -243,7 +259,7 @@ onBeforeUnmount(() => {
               </div>
               <button class="btn-soft px-3 py-2 text-xs lg:hidden" type="button" @click="closeInspector">关闭</button>
             </div>
-            <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div class="px-4 py-4" :class="isFixedWorkbenchViewport ? 'min-h-0 flex-1 overflow-y-auto' : ''">
               <div class="space-y-4 pb-4">
                 <InspectorSection title="图片信息" :open="sectionOpen.meta" @toggle="(next) => setSectionOpen('meta', next)">
                   <div class="mb-3 flex items-center justify-end">
@@ -350,7 +366,7 @@ onBeforeUnmount(() => {
           </aside>
           <section
             class="panel flex flex-1 flex-col rounded-[28px]"
-            :class="isDesktopViewport ? 'min-h-0 overflow-hidden' : 'min-h-[560px]'"
+            :class="isFixedWorkbenchViewport ? 'min-h-0 overflow-hidden' : 'min-h-[560px]'"
             :inert="isMobileInspectorModal ? '' : undefined"
             :aria-hidden="isMobileInspectorModal ? 'true' : undefined"
           >
@@ -387,7 +403,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </div>
-            <div class="relative min-h-0 flex-1 p-3 md:p-4">
+            <div class="relative flex-1 p-3 md:p-4" :class="isFixedWorkbenchViewport ? 'min-h-0' : 'min-h-[420px]'">
               <div class="editor-stage absolute inset-3 md:inset-4">
                 <canvas ref="canvasRef" class="block h-full w-full select-none rounded-4" />
               </div>
