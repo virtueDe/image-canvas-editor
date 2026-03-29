@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, useTemplateRef } from 'vue';
 import WorkbenchIcon from './WorkbenchIcon.vue';
 
 const props = defineProps<{
@@ -16,7 +16,16 @@ const emit = defineEmits<{
   (event: 'toggleTheme'): void;
 }>();
 
+const fileInput = useTemplateRef<HTMLInputElement>('fileInput');
+
 const handleFileChange = (event: Event) => emit('fileChange', event);
+const openFilePicker = () => {
+  if (props.editingLocked) {
+    return;
+  }
+
+  fileInput.value?.click();
+};
 const saveDraft = () => emit('saveDraft');
 const restoreDraft = () => emit('restoreDraft');
 const downloadImage = () => emit('download');
@@ -50,14 +59,24 @@ const themeAriaLabel = computed(() =>
         <WorkbenchIcon :name="currentThemeIcon" :size="16" />
         <span>{{ currentThemeLabel }}</span>
       </button>
-      <label
-        class="header-primary-btn cursor-pointer"
-        :class="{ 'pointer-events-none opacity-60': props.editingLocked }"
+      <button
+        class="header-primary-btn"
+        type="button"
+        :disabled="props.editingLocked"
+        @click="openFilePicker"
       >
-        <input class="hidden" type="file" accept="image/*" :disabled="props.editingLocked" @change="handleFileChange" />
         <WorkbenchIcon name="upload" :size="16" />
         <span>上传图片</span>
-      </label>
+      </button>
+      <input
+        ref="fileInput"
+        type="file"
+        accept="image/*"
+        tabindex="-1"
+        style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; border: 0; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap;"
+        :disabled="props.editingLocked"
+        @change="handleFileChange"
+      />
       <button
         class="header-action-btn"
         type="button"
