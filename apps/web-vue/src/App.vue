@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, watch, type CSSProperties } from 'vue';
 import WorkbenchHeader from './components/WorkbenchHeader.vue';
 import InspectorSection from './components/InspectorSection.vue';
 import { useImageEditor } from '@image-canvas-editor/editor-vue';
@@ -64,6 +64,45 @@ const sectionOpen = reactive<Record<SectionId, boolean>>({
   adjust: true,
 });
 const theme = ref<WorkbenchTheme>('dark');
+const themeStyle = computed<CSSProperties>(() =>
+  theme.value === 'dark'
+    ? {
+        colorScheme: 'dark',
+        '--studio-bg': '#14110e',
+        '--studio-surface-1': '#1c1814',
+        '--studio-surface-2': '#231f1b',
+        '--studio-surface-3': '#2a261f',
+        '--studio-border': 'rgba(255, 239, 220, 0.08)',
+        '--studio-ink': '#f5efe7',
+        '--studio-ink-muted': '#d4c8bb',
+        '--studio-ink-dim': '#a89f92',
+        '--studio-accent': '#e9c083',
+        '--studio-accent-strong': '#f2d3a0',
+        '--studio-accent-ink': '#2b1d0f',
+        '--studio-track': '#3a332c',
+        '--studio-thumb': '#e9c083',
+        '--studio-shadow': '0 24px 60px rgba(7, 5, 3, 0.55)',
+        '--studio-shadow-soft': '0 12px 30px rgba(7, 5, 3, 0.35)',
+      }
+    : {
+        colorScheme: 'light',
+        '--studio-bg': '#f5efe6',
+        '--studio-surface-1': '#fffaf2',
+        '--studio-surface-2': '#f5eadb',
+        '--studio-surface-3': '#eadac7',
+        '--studio-border': 'rgba(92, 64, 34, 0.18)',
+        '--studio-ink': '#2f2214',
+        '--studio-ink-muted': '#5a4733',
+        '--studio-ink-dim': '#846f58',
+        '--studio-accent': '#a86a24',
+        '--studio-accent-strong': '#8f5716',
+        '--studio-accent-ink': '#fff7eb',
+        '--studio-track': '#d7c2ab',
+        '--studio-thumb': '#b8742b',
+        '--studio-shadow': '0 24px 60px rgba(111, 79, 43, 0.18)',
+        '--studio-shadow-soft': '0 12px 30px rgba(111, 79, 43, 0.12)',
+      },
+);
 
 const isCropMode = computed(() => Boolean(state.value.cropMode));
 const stageModeLabel = computed(() => {
@@ -113,7 +152,7 @@ const toggleTheme = (): void => {
 </script>
 
 <template>
-  <div class="min-h-screen studio-shell" :data-theme="theme">
+  <div class="min-h-screen studio-shell" :data-theme="theme" :style="themeStyle">
     <div class="mx-auto max-w-[1600px] p-4 md:p-6 xl:p-8">
       <div class="studio-header">
         <WorkbenchHeader

@@ -22,8 +22,12 @@ const restoreDraft = () => emit('restoreDraft');
 const downloadImage = () => emit('download');
 const toggleTheme = () => emit('toggleTheme');
 
-const nextThemeIcon = computed(() => (props.theme === 'dark' ? 'theme-light' : 'theme-dark'));
-const nextThemeLabel = computed(() => (props.theme === 'dark' ? '浅色模式' : '深色模式'));
+const isDarkTheme = computed(() => props.theme === 'dark');
+const currentThemeIcon = computed(() => (isDarkTheme.value ? 'theme-dark' : 'theme-light'));
+const currentThemeLabel = computed(() => (isDarkTheme.value ? '主题：深色' : '主题：浅色'));
+const themeAriaLabel = computed(() =>
+  isDarkTheme.value ? '当前为深色模式，点击切换为浅色模式' : '当前为浅色模式，点击切换为深色模式',
+);
 </script>
 
 <template>
@@ -36,9 +40,15 @@ const nextThemeLabel = computed(() => (props.theme === 'dark' ? '浅色模式' :
       </p>
     </div>
     <div class="panel flex flex-wrap items-center gap-2 px-4 py-3">
-      <button class="btn-soft inline-flex items-center gap-2 whitespace-nowrap" type="button" @click="toggleTheme">
-        <WorkbenchIcon :name="nextThemeIcon" :size="16" />
-        <span>{{ nextThemeLabel }}</span>
+      <button
+        class="btn-soft inline-flex items-center gap-2 whitespace-nowrap"
+        type="button"
+        :aria-label="themeAriaLabel"
+        :aria-pressed="isDarkTheme"
+        @click="toggleTheme"
+      >
+        <WorkbenchIcon :name="currentThemeIcon" :size="16" />
+        <span>{{ currentThemeLabel }}</span>
       </button>
       <label
         class="btn-primary inline-flex cursor-pointer items-center gap-2 whitespace-nowrap"
