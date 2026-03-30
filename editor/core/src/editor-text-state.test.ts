@@ -133,4 +133,87 @@ describe('draft store with multi-text schema', () => {
     });
     expect('textOverlay' in payload).toBe(false);
   });
+
+  it('在 restore 之后仅修改 textOverlay 再 save，不会丢掉最新文本', async () => {
+    const store = createLocalDraftStore();
+
+    store.save(baseState());
+    const restored = await store.restore();
+
+    store.save({
+      ...baseState(),
+      ...restored,
+      textOverlay: {
+        ...restored.textOverlay!,
+        text: '最新草稿文字',
+        xRatio: 0.6,
+      },
+    });
+
+    const payload = JSON.parse(storage.get('image-canvas-editor:draft:v2') ?? '');
+    expect(payload.texts).toEqual([
+      {
+        id: 'text-1',
+        content: '最新草稿文字',
+        xRatio: 0.6,
+        yRatio: 0.3,
+        fontSize: 32,
+        color: '#ffffff',
+        align: 'center',
+        lineHeight: 1.25,
+      },
+    ]);
+    expect(payload.activeTextId).toBe('text-1');
+  });
+
+  it('restore 会把无效的 activeTextId 和 textToolState 归一化', async () => {
+    storage.set(
+      'image-canvas-editor:draft:v2',
+      JSON.stringify({
+        schemaVersion: 2,
+        image: null,
+        cropRect: null,
+        texts: [
+          {
+            id: 'text-7',
+            content: '草稿文字',
+            xRatio: 0.15,
+            yRatio: 0.2,
+            fontSize: 28,
+            color: '#f8fafc',
+            align: 'left',
+            lineHeight: 1.4,
+          },
+        ],
+        activeTextId: 'missing-text',
+        textToolState: {
+          mode: 'dragging',
+          textId: 'missing-text',
+          startClientX: 10,
+          startClientY: 20,
+          originXRatio: 0.1,
+          originYRatio: 0.2,
+        },
+        adjustments: { contrast: 0, exposure: 0, highlights: 0 },
+        transform: { rotation: 0, flipX: false, flipY: false },
+        activePreset: 'original',
+      }),
+    );
+
+    const store = createLocalDraftStore();
+    const restored = await store.restore();
+
+    expect(restored.activeTextId).toBe('text-7');
+    expect(restored.textToolState).toEqual({
+      mode: 'idle',
+      hoverTextId: null,
+    });
+    expect(restored.textOverlay).toEqual({
+      text: '草稿文字',
+      xRatio: 0.15,
+      yRatio: 0.2,
+      fontSize: 28,
+      color: '#f8fafc',
+    });
+  });
 });

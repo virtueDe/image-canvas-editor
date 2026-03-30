@@ -105,6 +105,7 @@ describe('history snapshots', () => {
     const snapshot = captureHistorySnapshot(
       createState({
         cropRect: createRect(40, 50, 120, 80),
+        textOverlay: null,
         texts: [
           createText({
             id: 'text-2',
@@ -157,6 +158,85 @@ describe('history snapshots', () => {
       yRatio: 0.3,
       fontSize: 36,
       color: '#38BDF8',
+    });
+  });
+
+  it('在历史恢复后仅修改 textOverlay 时，重新抓取快照也会保留最新文本', () => {
+    const restoredState = applyHistorySnapshot(
+      createState(),
+      captureHistorySnapshot(
+        createState({
+          textOverlay: null,
+          texts: [
+            createText({
+              id: 'text-2',
+              content: '旧文字',
+              xRatio: 0.4,
+              yRatio: 0.6,
+              fontSize: 40,
+              color: '#22C55E',
+            }),
+          ],
+          activeTextId: 'text-2',
+          textToolState: {
+            mode: 'editing',
+            textId: 'text-2',
+            caretIndex: 1,
+            selectionStart: 1,
+            selectionEnd: 1,
+            composing: false,
+          },
+        }),
+      ),
+    );
+
+    const legacyEditedState: EditorState = {
+      ...restoredState,
+      textOverlay: {
+        ...restoredState.textOverlay!,
+        text: '最新文字',
+        xRatio: 0.55,
+      },
+    };
+
+    const snapshot = captureHistorySnapshot(legacyEditedState);
+
+    expect(snapshot.texts).toEqual([
+      {
+        id: 'text-2',
+        content: '最新文字',
+        xRatio: 0.55,
+        yRatio: 0.6,
+        fontSize: 40,
+        color: '#22C55E',
+        align: 'center',
+        lineHeight: 1.25,
+      },
+    ]);
+    expect(snapshot.activeTextId).toBe('text-2');
+  });
+
+  it('captureHistorySnapshot 会把无效的 activeTextId 和 textToolState 归一化', () => {
+    const snapshot = captureHistorySnapshot(
+      createState({
+        textOverlay: null,
+        texts: [createText({ id: 'text-9', content: '唯一文字' })],
+        activeTextId: 'missing-text',
+        textToolState: {
+          mode: 'editing',
+          textId: 'missing-text',
+          caretIndex: 7,
+          selectionStart: 2,
+          selectionEnd: 7,
+          composing: true,
+        },
+      }),
+    );
+
+    expect(snapshot.activeTextId).toBe('text-9');
+    expect(snapshot.textToolState).toEqual({
+      mode: 'idle',
+      hoverTextId: null,
     });
   });
 

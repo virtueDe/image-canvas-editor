@@ -1,63 +1,14 @@
-import type { EditorState, ImageResource, SerializableEditorState, TextItem, TextOverlay, TextToolState } from './types';
+import {
+  cloneTextToolState,
+  normalizeTextState,
+  type EditorState,
+  type ImageResource,
+  type SerializableEditorState,
+} from './types';
 import { loadImageFromDataUrl } from './utils';
 
 const DRAFT_STORAGE_KEY = 'image-canvas-editor:draft:v2';
 const DRAFT_SCHEMA_VERSION = 2;
-const createIdleTextToolState = (): TextToolState => ({
-  mode: 'idle',
-  hoverTextId: null,
-});
-
-const legacyOverlayToTextItem = (textOverlay: TextOverlay): TextItem => ({
-  id: 'legacy-text-1',
-  content: textOverlay.text,
-  xRatio: textOverlay.xRatio,
-  yRatio: textOverlay.yRatio,
-  fontSize: textOverlay.fontSize,
-  color: textOverlay.color,
-  align: 'center',
-  lineHeight: 1.25,
-});
-
-const textItemToLegacyOverlay = (text: TextItem | null): TextOverlay | null => {
-  if (!text) {
-    return null;
-  }
-
-  return {
-    text: text.content,
-    xRatio: text.xRatio,
-    yRatio: text.yRatio,
-    fontSize: text.fontSize,
-    color: text.color,
-  };
-};
-
-const resolveDraftTexts = (state: EditorState): TextItem[] => {
-  if (state.texts && state.texts.length > 0) {
-    return state.texts.map((text) => ({ ...text }));
-  }
-
-  if (state.textOverlay) {
-    return [legacyOverlayToTextItem(state.textOverlay)];
-  }
-
-  return [];
-};
-
-const resolveDraftActiveTextId = (state: EditorState, texts: TextItem[]): string | null => {
-  if (texts.length === 0) {
-    return null;
-  }
-
-  if (state.activeTextId && texts.some((text) => text.id === state.activeTextId)) {
-    return state.activeTextId;
-  }
-
-  return texts[0].id;
-};
-
-const cloneTextToolState = (textToolState: TextToolState): TextToolState => ({ ...textToolState });
 
 export interface DraftStore {
   save(state: EditorState): void;
@@ -65,8 +16,7 @@ export interface DraftStore {
 }
 
 const toSerializable = (state: EditorState): SerializableEditorState => {
-  const texts = resolveDraftTexts(state);
-  const activeTextId = resolveDraftActiveTextId(state, texts);
+  const normalizedTextState = normalizeTextState(state);
 
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
@@ -79,9 +29,9 @@ const toSerializable = (state: EditorState): SerializableEditorState => {
         }
       : null,
     cropRect: state.cropRect,
-    texts,
-    activeTextId,
-    textToolState: state.textToolState ? cloneTextToolState(state.textToolState) : createIdleTextToolState(),
+    texts: normalizedTextState.texts.map((text) => ({ ...text })),
+    activeTextId: normalizedTextState.activeTextId,
+    textToolState: cloneTextToolState(normalizedTextState.textToolState),
     adjustments: state.adjustments,
     transform: state.transform,
     activePreset: state.activePreset,
@@ -114,20 +64,16 @@ export const createLocalDraftStore = (storageKey = DRAFT_STORAGE_KEY): DraftStor
     }
 
     const parsed = JSON.parse(rawValue) as Partial<SerializableEditorState>;
-    const texts = parsed.texts?.map((text) => ({ ...text })) ?? (parsed.textOverlay ? [legacyOverlayToTextItem(parsed.textOverlay)] : []);
-    const activeTextId =
-      parsed.activeTextId && texts.some((text) => text.id === parsed.activeTextId)
-        ? parsed.activeTextId
-        : texts[0]?.id ?? null;
+    const normalizedTextState = normalizeTextState(parsed);
 
     return {
       ...parsed,
       schemaVersion: parsed.schemaVersion ?? DRAFT_SCHEMA_VERSION,
       cropRect: parsed.cropRect ?? null,
-      textOverlay: textItemToLegacyOverlay(texts.find((text) => text.id === activeTextId) ?? texts[0] ?? null),
-      texts,
-      activeTextId,
-      textToolState: parsed.textToolState ? cloneTextToolState(parsed.textToolState) : createIdleTextToolState(),
+      textOverlay: normalizedTextState.textOverlay,
+      texts: normalizedTextState.texts.map((text) => ({ ...text })),
+      activeTextId: normalizedTextState.activeTextId,
+      textToolState: cloneTextToolState(normalizedTextState.textToolState),
       adjustments: parsed.adjustments ?? {
         contrast: 0,
         exposure: 0,
