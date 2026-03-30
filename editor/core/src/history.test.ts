@@ -216,6 +216,113 @@ describe('history snapshots', () => {
     expect(snapshot.activeTextId).toBe('text-2');
   });
 
+  it('多文字状态下 legacy textOverlay 只会合并当前激活文字，不会丢掉其他项', () => {
+    const snapshot = captureHistorySnapshot(
+      createState({
+        textOverlay: {
+          text: '第二条最新文本',
+          xRatio: 0.72,
+          yRatio: 0.66,
+          fontSize: 44,
+          color: '#F97316',
+        },
+        texts: [
+          createText({
+            id: 'text-1',
+            content: '第一条保持不变',
+            xRatio: 0.2,
+            yRatio: 0.25,
+            fontSize: 30,
+            color: '#E2E8F0',
+            align: 'left',
+            lineHeight: 1.6,
+          }),
+          createText({
+            id: 'text-2',
+            content: '第二条旧文本',
+            xRatio: 0.62,
+            yRatio: 0.58,
+            fontSize: 38,
+            color: '#22C55E',
+            align: 'right',
+            lineHeight: 1.8,
+          }),
+        ],
+        activeTextId: 'text-2',
+        textToolState: {
+          mode: 'editing',
+          textId: 'text-2',
+          caretIndex: 2,
+          selectionStart: 2,
+          selectionEnd: 2,
+          composing: false,
+        },
+      }),
+    );
+
+    expect(snapshot.texts).toEqual([
+      {
+        id: 'text-1',
+        content: '第一条保持不变',
+        xRatio: 0.2,
+        yRatio: 0.25,
+        fontSize: 30,
+        color: '#E2E8F0',
+        align: 'left',
+        lineHeight: 1.6,
+      },
+      {
+        id: 'text-2',
+        content: '第二条最新文本',
+        xRatio: 0.72,
+        yRatio: 0.66,
+        fontSize: 44,
+        color: '#F97316',
+        align: 'right',
+        lineHeight: 1.8,
+      },
+    ]);
+    expect(snapshot.activeTextId).toBe('text-2');
+  });
+
+  it('legacy textOverlay 合并 active text 时不会覆盖 richer fields', () => {
+    const snapshot = captureHistorySnapshot(
+      createState({
+        textOverlay: {
+          text: '更新后的文本',
+          xRatio: 0.48,
+          yRatio: 0.52,
+          fontSize: 34,
+          color: '#0EA5E9',
+        },
+        texts: [
+          createText({
+            id: 'text-5',
+            content: '原始文本',
+            xRatio: 0.4,
+            yRatio: 0.45,
+            fontSize: 28,
+            color: '#F8FAFC',
+            align: 'right',
+            lineHeight: 1.9,
+          }),
+        ],
+        activeTextId: 'text-5',
+      }),
+    );
+
+    expect(snapshot.texts[0]).toEqual({
+      id: 'text-5',
+      content: '更新后的文本',
+      xRatio: 0.48,
+      yRatio: 0.52,
+      fontSize: 34,
+      color: '#0EA5E9',
+      align: 'right',
+      lineHeight: 1.9,
+    });
+  });
+
   it('captureHistorySnapshot 会把无效的 activeTextId 和 textToolState 归一化', () => {
     const snapshot = captureHistorySnapshot(
       createState({

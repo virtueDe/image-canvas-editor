@@ -162,6 +162,18 @@ export const textOverlayToTextItem = (
   lineHeight: 1.25,
 });
 
+const mergeTextOverlayIntoTextItem = (
+  text: TextItem,
+  textOverlay: TextOverlay,
+): TextItem => ({
+  ...text,
+  content: textOverlay.text,
+  xRatio: textOverlay.xRatio,
+  yRatio: textOverlay.yRatio,
+  fontSize: textOverlay.fontSize,
+  color: textOverlay.color,
+});
+
 export const textItemToTextOverlay = (text: TextItem | null): TextOverlay | null => {
   if (!text) {
     return null;
@@ -253,16 +265,24 @@ export const normalizeTextToolState = (
 export const normalizeTextState = (
   state: TextStateCarrier,
 ): NormalizedTextState => {
-  const texts = state.textOverlay
-    ? [textOverlayToTextItem(state.textOverlay, state.activeTextId ?? state.texts?.[0]?.id ?? DEFAULT_LEGACY_TEXT_ID)]
-    : cloneTexts(state.texts ?? []);
-  const activeTextId = normalizeActiveTextId(texts, state.activeTextId);
+  const baseTexts =
+    state.texts && state.texts.length > 0
+      ? cloneTexts(state.texts)
+      : state.textOverlay
+        ? [textOverlayToTextItem(state.textOverlay, state.activeTextId ?? DEFAULT_LEGACY_TEXT_ID)]
+        : [];
+  const activeTextId = normalizeActiveTextId(baseTexts, state.activeTextId);
+  const texts =
+    state.textOverlay && baseTexts.length > 0
+      ? baseTexts.map((text) =>
+          text.id === activeTextId ? mergeTextOverlayIntoTextItem(text, state.textOverlay as TextOverlay) : text,
+        )
+      : baseTexts;
   const textToolState = normalizeTextToolState(state.textToolState, texts);
-  const activeText =
-    texts.find((text) => text.id === activeTextId) ?? texts[0] ?? null;
+  const activeText = texts.find((text) => text.id === activeTextId) ?? texts[0] ?? null;
 
   return {
-    textOverlay: state.textOverlay ?? textItemToTextOverlay(activeText),
+    textOverlay: textItemToTextOverlay(activeText),
     texts,
     activeTextId,
     textToolState,

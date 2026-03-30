@@ -166,6 +166,150 @@ describe('draft store with multi-text schema', () => {
     expect(payload.activeTextId).toBe('text-1');
   });
 
+  it('多文字草稿在仅修改 active text 的 legacy textOverlay 后，save 不会丢掉其他项', async () => {
+    const store = createLocalDraftStore();
+    const multiTextState: EditorState = {
+      ...baseState(),
+      textOverlay: {
+        text: '第二段旧文本',
+        xRatio: 0.7,
+        yRatio: 0.62,
+        fontSize: 36,
+        color: '#22c55e',
+      },
+      texts: [
+        {
+          id: 'text-1',
+          content: '第一段保持',
+          xRatio: 0.25,
+          yRatio: 0.3,
+          fontSize: 32,
+          color: '#ffffff',
+          align: 'left',
+          lineHeight: 1.4,
+        },
+        {
+          id: 'text-2',
+          content: '第二段旧文本',
+          xRatio: 0.7,
+          yRatio: 0.62,
+          fontSize: 36,
+          color: '#22c55e',
+          align: 'right',
+          lineHeight: 1.8,
+        },
+      ],
+      activeTextId: 'text-2',
+      textToolState: {
+        mode: 'editing',
+        textId: 'text-2',
+        caretIndex: 2,
+        selectionStart: 2,
+        selectionEnd: 2,
+        composing: false,
+      },
+    };
+
+    store.save(multiTextState);
+    const restored = await store.restore();
+
+    store.save({
+      ...multiTextState,
+      ...restored,
+      textOverlay: {
+        ...restored.textOverlay!,
+        text: '第二段最新文本',
+        xRatio: 0.76,
+      },
+    });
+
+    const payload = JSON.parse(storage.get('image-canvas-editor:draft:v2') ?? '');
+    expect(payload.texts).toEqual([
+      {
+        id: 'text-1',
+        content: '第一段保持',
+        xRatio: 0.25,
+        yRatio: 0.3,
+        fontSize: 32,
+        color: '#ffffff',
+        align: 'left',
+        lineHeight: 1.4,
+      },
+      {
+        id: 'text-2',
+        content: '第二段最新文本',
+        xRatio: 0.76,
+        yRatio: 0.62,
+        fontSize: 36,
+        color: '#22c55e',
+        align: 'right',
+        lineHeight: 1.8,
+      },
+    ]);
+    expect(payload.activeTextId).toBe('text-2');
+  });
+
+  it('restore 后再 save 时，active text 的 align 和 lineHeight 不会被 legacy shim 覆盖', async () => {
+    const store = createLocalDraftStore();
+
+    store.save({
+      ...baseState(),
+      textOverlay: {
+        text: '唯一文本',
+        xRatio: 0.18,
+        yRatio: 0.22,
+        fontSize: 30,
+        color: '#e2e8f0',
+      },
+      texts: [
+        {
+          id: 'text-9',
+          content: '唯一文本',
+          xRatio: 0.18,
+          yRatio: 0.22,
+          fontSize: 30,
+          color: '#e2e8f0',
+          align: 'right',
+          lineHeight: 1.9,
+        },
+      ],
+      activeTextId: 'text-9',
+      textToolState: {
+        mode: 'editing',
+        textId: 'text-9',
+        caretIndex: 1,
+        selectionStart: 1,
+        selectionEnd: 1,
+        composing: false,
+      },
+    });
+
+    const restored = await store.restore();
+
+    store.save({
+      ...baseState(),
+      ...restored,
+      textOverlay: {
+        ...restored.textOverlay!,
+        text: '唯一文本-更新',
+      },
+    });
+
+    const payload = JSON.parse(storage.get('image-canvas-editor:draft:v2') ?? '');
+    expect(payload.texts).toEqual([
+      {
+        id: 'text-9',
+        content: '唯一文本-更新',
+        xRatio: 0.18,
+        yRatio: 0.22,
+        fontSize: 30,
+        color: '#e2e8f0',
+        align: 'right',
+        lineHeight: 1.9,
+      },
+    ]);
+  });
+
   it('restore 会把无效的 activeTextId 和 textToolState 归一化', async () => {
     storage.set(
       'image-canvas-editor:draft:v2',
