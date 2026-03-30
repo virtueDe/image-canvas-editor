@@ -19,7 +19,7 @@ export default defineConfig({
     'workbench-icon-btn': 'inline-flex items-center gap-2 whitespace-nowrap',
     'header-action-btn': 'btn-soft workbench-icon-btn',
     'header-primary-btn': 'btn-primary workbench-icon-btn',
-    'theme-toggle-btn': 'header-action-btn min-w-[148px] justify-between',
+    'theme-toggle-btn': 'header-action-btn min-w-0 justify-between px-3',
     'mobile-toggle-btn': 'btn-soft px-3 py-2 text-xs',
     'mini-action-btn': 'btn-soft px-2 py-1 text-xs',
   },

@@ -33,40 +33,26 @@ const toggleTheme = () => emit('toggleTheme');
 
 const isDarkTheme = computed(() => props.theme === 'dark');
 const currentThemeIcon = computed(() => (isDarkTheme.value ? 'theme-dark' : 'theme-light'));
-const currentThemeLabel = computed(() => (isDarkTheme.value ? '主题：深色' : '主题：浅色'));
+const currentThemeLabel = computed(() => (isDarkTheme.value ? '深色' : '浅色'));
 const themeAriaLabel = computed(() =>
   isDarkTheme.value ? '当前为深色模式，点击切换为浅色模式' : '当前为浅色模式，点击切换为深色模式',
 );
 </script>
 
 <template>
-  <header class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-    <div>
-      <p class="studio-header-eyebrow text-sm tracking-[0.3em] uppercase">Canvas Image Editor</p>
-      <h1 class="mt-2 text-3xl font-bold md:text-4xl">在线图片编辑器</h1>
-      <p class="studio-header-copy mt-2 max-w-3xl text-sm leading-6">
-        用最少的概念做最有用的事：Vue 只做 UI，Canvas + TypeScript 内核只做编辑。
-      </p>
-    </div>
-    <div class="workbench-frame flex flex-wrap items-center gap-2 rounded-4 px-4 py-3">
+  <header class="studio-topbar">
+    <p class="studio-topbar__eyebrow">Canvas Workspace</p>
+
+    <div class="studio-topbar__actions">
       <button
-        class="theme-toggle-btn"
-        type="button"
-        :aria-label="themeAriaLabel"
-        :aria-pressed="isDarkTheme"
-        @click="toggleTheme"
-      >
-        <WorkbenchIcon :name="currentThemeIcon" :size="16" />
-        <span>{{ currentThemeLabel }}</span>
-      </button>
-      <button
-        class="header-primary-btn"
+        class="header-icon-btn header-icon-btn--primary"
         type="button"
         :disabled="props.editingLocked"
+        title="上传图片"
+        aria-label="上传图片"
         @click="openFilePicker"
       >
         <WorkbenchIcon name="upload" :size="16" />
-        <span>上传图片</span>
       </button>
       <input
         ref="fileInput"
@@ -79,31 +65,44 @@ const themeAriaLabel = computed(() =>
         @change="handleFileChange"
       />
       <button
-        class="header-action-btn"
+        class="header-icon-btn"
         type="button"
         :disabled="!props.hasImage || props.editingLocked"
+        title="保存草稿"
+        aria-label="保存草稿"
         @click="saveDraft"
       >
         <WorkbenchIcon name="draft-save" :size="16" />
-        <span>保存草稿</span>
       </button>
       <button
-        class="header-action-btn"
+        class="header-icon-btn"
         type="button"
         :disabled="props.editingLocked"
+        title="恢复草稿"
+        aria-label="恢复草稿"
         @click="restoreDraft"
       >
         <WorkbenchIcon name="draft-restore" :size="16" />
-        <span>恢复草稿</span>
       </button>
       <button
-        class="header-primary-btn"
+        class="header-icon-btn header-icon-btn--primary"
         type="button"
         :disabled="!props.hasImage || props.editingLocked"
+        title="导出 PNG"
+        aria-label="导出 PNG"
         @click="downloadImage"
       >
         <WorkbenchIcon name="download" :size="16" />
-        <span>下载 PNG</span>
+      </button>
+      <button
+        class="header-icon-btn"
+        type="button"
+        :title="`切换主题：${currentThemeLabel}`"
+        :aria-label="themeAriaLabel"
+        :aria-pressed="isDarkTheme"
+        @click="toggleTheme"
+      >
+        <WorkbenchIcon :name="currentThemeIcon" :size="16" />
       </button>
     </div>
   </header>

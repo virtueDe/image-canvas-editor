@@ -71,6 +71,7 @@ const isDesktopViewport = ref(typeof window !== 'undefined' ? window.matchMedia(
 const isFixedWorkbenchViewport = ref(
   typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px) and (min-height: 780px)').matches : false,
 );
+const stageFileInputRef = ref<HTMLInputElement | null>(null);
 const inspectorPanelRef = ref<HTMLElement | null>(null);
 const inspectorTriggerButtonRef = ref<HTMLButtonElement | null>(null);
 const inspectorDialogTitleId = 'workbench-inspector-title';
@@ -128,6 +129,20 @@ const stageHint = computed(() =>
 );
 const isMobileInspectorModal = computed(() => !isDesktopViewport.value && isInspectorOpen.value);
 const shouldScrollInspectorContent = computed(() => isMobileInspectorModal.value || isFixedWorkbenchViewport.value);
+const activePresetLabel = computed(
+  () => PRESET_OPTIONS.find((item) => item.value === state.value.activePreset)?.label ?? '原图',
+);
+const metaSummary = computed(() => {
+  const [fileNameRow, sizeRow, cropRow, statusRow] = imageMetaRows.value;
+
+  return {
+    fileName: fileNameRow?.value ?? '未加载',
+    size: sizeRow?.value ?? '-',
+    crop: cropRow?.value ?? '-',
+    status: statusRow?.value ?? '等待上传图片',
+  };
+});
+const compactMetaLine = computed(() => `${metaSummary.value.fileName} · ${metaSummary.value.size}`);
 
 const lockDocumentScroll = (): void => {
   if (typeof document === 'undefined' || typeof window === 'undefined' || isDocumentScrollLocked) {
@@ -192,6 +207,7 @@ watch(
 watch(isDesktopViewport, (next) => {
   if (next) {
     closeInspector();
+    isStageToolsOpen.value = false;
   }
 });
 watch(theme, applyDocumentTheme);
@@ -214,6 +230,13 @@ watch(isMobileInspectorModal, async (next) => {
 const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
 const toggleTheme = (): void => {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
+};
+const openStageFilePicker = (): void => {
+  if (isCropMode.value) {
+    return;
+  }
+
+  stageFileInputRef.value?.click();
 };
 const openInspector = (): void => {
   shouldRestoreInspectorFocus = false;
@@ -273,7 +296,7 @@ onBeforeUnmount(() => {
         :inert="isMobileInspectorModal ? '' : undefined"
         :aria-hidden="isMobileInspectorModal ? 'true' : undefined"
       >
-        <div class="mx-auto max-w-[1680px]">
+        <div class="mx-auto max-w-[1720px]">
           <WorkbenchHeader
             :has-image="hasImage"
             :editing-locked="isCropMode"
@@ -293,23 +316,77 @@ onBeforeUnmount(() => {
         @click="closeInspector({ restoreFocus: true })"
       />
       <main
-        class="mx-auto flex w-full max-w-[1680px] flex-1 px-4 pb-4 md:px-6 md:pb-6 xl:px-8 xl:pb-8"
+        class="studio-main mx-auto flex w-full max-w-[1720px] flex-1 px-4 pb-4 md:px-6 md:pb-6 xl:px-8 xl:pb-8"
         :class="isFixedWorkbenchViewport ? 'min-h-0' : ''"
       >
-        <div
-          class="grid w-full flex-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]"
-          :class="isFixedWorkbenchViewport ? 'min-h-0' : ''"
-        >
+        <div class="studio-workbench relative w-full flex-1" :class="isFixedWorkbenchViewport ? 'min-h-0' : ''">
           <aside
-            v-if="isDesktopViewport || isInspectorOpen"
-            ref="inspectorPanelRef"
-            class="workbench-frame flex flex-col"
+            class="tool-dock tool-dock--desktop workbench-panel flex-col"
             :class="
               isDesktopViewport
                 ? isFixedWorkbenchViewport
-                  ? 'min-h-0 overflow-hidden rounded-[28px]'
-                  : 'rounded-[28px]'
-                : 'fixed inset-y-0 left-0 z-40 h-full w-[min(22rem,100vw)] max-w-full rounded-r-[28px] border-l-0 shadow-[var(--studio-shadow)]'
+                  ? 'flex lg:min-h-0 lg:overflow-hidden'
+                  : 'flex'
+                : isStageToolsOpen
+                  ? 'flex'
+                  : 'hidden'
+            "
+            :id="!isDesktopViewport ? stageToolsPanelId : undefined"
+            :inert="isMobileInspectorModal ? '' : undefined"
+            :aria-hidden="isMobileInspectorModal ? 'true' : undefined"
+          >
+            <div class="tool-dock__group">
+              <span class="tool-dock__label">历史</span>
+              <div class="tool-dock__grid">
+                <button class="dock-tool-btn" type="button" :disabled="!canUndo || isCropMode" title="撤销" aria-label="撤销" @click="undo">
+                  <WorkbenchIcon name="undo" :size="18" />
+                </button>
+                <button class="dock-tool-btn" type="button" :disabled="!canRedo || isCropMode" title="重做" aria-label="重做" @click="redo">
+                  <WorkbenchIcon name="redo" :size="18" />
+                </button>
+              </div>
+            </div>
+            <div class="tool-dock__group">
+              <span class="tool-dock__label">动作</span>
+              <div class="tool-dock__grid">
+                <button class="dock-tool-btn dock-tool-btn--primary" type="button" :disabled="!hasImage || isCropMode" title="裁剪" aria-label="裁剪" @click="enterCropMode">
+                  <WorkbenchIcon name="crop" :size="18" />
+                </button>
+                <button class="dock-tool-btn" type="button" :disabled="!canEditText" title="文字" aria-label="文字" @click="ensureTextOverlay">
+                  <WorkbenchIcon name="text" :size="18" />
+                </button>
+              </div>
+            </div>
+            <div class="tool-dock__group">
+              <span class="tool-dock__label">视图</span>
+              <div class="tool-dock__grid">
+                <button class="dock-tool-btn" type="button" :disabled="!hasImage || isCropMode" title="缩小" aria-label="缩小" @click="zoomOut">
+                  <WorkbenchIcon name="zoom-out" :size="18" />
+                </button>
+                <button class="dock-tool-btn" type="button" :disabled="!hasImage || isCropMode" title="放大" aria-label="放大" @click="zoomIn">
+                  <WorkbenchIcon name="zoom-in" :size="18" />
+                </button>
+                <button class="dock-tool-btn" type="button" :disabled="!hasImage || isCropMode" title="复位视图" aria-label="复位视图" @click="resetViewport">
+                  <WorkbenchIcon name="viewport-reset" :size="18" />
+                </button>
+              </div>
+            </div>
+            <div class="tool-dock__meta lg:hidden">
+              <span class="tool-dock__meta-label">预设</span>
+              <strong>{{ activePresetLabel }}</strong>
+              <span>{{ metaSummary.size }}</span>
+            </div>
+          </aside>
+          <aside
+            v-if="isDesktopViewport || isInspectorOpen"
+            ref="inspectorPanelRef"
+            class="inspector-shell inspector-shell--desktop workbench-frame flex flex-col"
+            :class="
+              isDesktopViewport
+                ? isFixedWorkbenchViewport
+                  ? 'min-h-0 overflow-hidden'
+                  : ''
+                : 'fixed inset-y-0 right-0 z-40 h-full w-[min(23rem,100vw)] max-w-full rounded-l-[28px] border-r-0 shadow-[var(--studio-shadow)]'
             "
             :id="!isDesktopViewport ? inspectorPanelId : undefined"
             :role="isMobileInspectorModal ? 'dialog' : undefined"
@@ -317,26 +394,27 @@ onBeforeUnmount(() => {
             :aria-labelledby="isMobileInspectorModal ? inspectorDialogTitleId : undefined"
             :tabindex="isMobileInspectorModal ? -1 : undefined"
           >
-            <div class="flex items-start justify-between gap-3 border-b border-[color:var(--studio-border)] px-4 py-4">
-              <div>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--studio-ink-dim)]">Inspector</p>
-                <h2 :id="inspectorDialogTitleId" class="mt-1 text-base font-semibold text-[color:var(--studio-ink)]">编辑面板</h2>
-                <p class="mt-1 text-xs leading-5 text-[color:var(--studio-ink-dim)]">固定侧栏只负责控件组织，滚动限制在面板内部。</p>
+            <div class="inspector-shell__header">
+              <div class="min-w-0">
+                <h2 :id="inspectorDialogTitleId" class="inspector-shell__title">调节</h2>
+                <p class="inspector-shell__meta">{{ compactMetaLine }}</p>
               </div>
               <button class="mobile-toggle-btn lg:hidden" type="button" @click="closeInspector({ restoreFocus: true })">关闭</button>
             </div>
             <div class="min-h-0 px-4 py-4" :class="shouldScrollInspectorContent ? 'flex-1 overflow-y-auto overscroll-contain' : ''">
-              <div class="space-y-4 pb-4">
+              <div class="space-y-3 pb-3">
                 <InspectorSection title="图片信息" :open="sectionOpen.meta" @toggle="(next) => setSectionOpen('meta', next)">
-                  <div class="mb-3 flex items-center justify-end">
-                    <button class="mini-action-btn" type="button" :disabled="!hasImage || isCropMode" @click="resetEdits">重置全部</button>
+                  <div class="inspector-meta-row">
+                    <div class="inspector-meta-chip">
+                      <span class="inspector-meta-chip__label">文件</span>
+                      <strong class="inspector-meta-chip__value">{{ metaSummary.fileName }}</strong>
+                    </div>
+                    <div class="inspector-meta-chip">
+                      <span class="inspector-meta-chip__label">尺寸</span>
+                      <strong class="inspector-meta-chip__value">{{ metaSummary.size }}</strong>
+                    </div>
+                    <button class="mini-action-btn" type="button" :disabled="!hasImage || isCropMode" @click="resetEdits">重置</button>
                   </div>
-                  <dl class="grid grid-cols-[80px_1fr] gap-y-2 text-sm text-[color:var(--studio-ink-muted)]">
-                    <template v-for="item in imageMetaRows" :key="item.label">
-                      <dt>{{ item.label }}</dt>
-                      <dd>{{ item.value }}</dd>
-                    </template>
-                  </dl>
                 </InspectorSection>
                 <InspectorSection title="旋转与翻转" :hint="`当前角度 ${rotationText}`" :open="sectionOpen.transform" @toggle="(next) => setSectionOpen('transform', next)">
                   <div class="grid grid-cols-2 gap-2">
@@ -461,20 +539,31 @@ onBeforeUnmount(() => {
             </div>
           </aside>
           <section
-            class="workbench-panel flex flex-1 flex-col"
-            :class="isFixedWorkbenchViewport ? 'min-h-0 overflow-hidden' : 'min-h-[560px]'"
+            class="stage-shell stage-shell--desktop workbench-panel flex flex-1 flex-col overflow-hidden"
+            :class="isFixedWorkbenchViewport ? 'min-h-0' : 'min-h-[720px]'"
             :inert="isMobileInspectorModal ? '' : undefined"
             :aria-hidden="isMobileInspectorModal ? 'true' : undefined"
           >
-            <div class="flex shrink-0 flex-col gap-4 border-b border-[color:var(--studio-border)] px-4 py-4 md:px-5">
-              <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div class="min-w-0">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--studio-ink-dim)]">Stage</span>
-                    <span class="status-pill">{{ stageModeLabel }}</span>
-                  </div>
-                  <h2 class="mt-2 panel-title">编辑工作台</h2>
-                  <p class="mt-2 max-w-2xl text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ stageHint }}</p>
+            <div class="stage-shell__topbar">
+              <div class="stage-shell__headline">
+                <p class="stage-shell__eyebrow">Stage</p>
+                <div class="stage-shell__badges">
+                  <span class="status-pill stage-status-pill">{{ stageModeLabel }}</span>
+                  <span v-if="hasImage" class="status-pill">{{ activePresetLabel }}</span>
+                </div>
+              </div>
+              <div class="stage-shell__controls">
+                <div class="stage-metric">
+                  <span class="stage-metric__label">缩放</span>
+                  <strong class="stage-metric__value">{{ zoomText }}</strong>
+                </div>
+                <div class="stage-metric">
+                  <span class="stage-metric__label">角度</span>
+                  <strong class="stage-metric__value">{{ rotationText }}</strong>
+                </div>
+                <div class="stage-metric">
+                  <span class="stage-metric__label">状态</span>
+                  <strong class="stage-metric__value">{{ metaSummary.status }}</strong>
                 </div>
                 <div class="flex items-center gap-2 lg:hidden">
                   <button
@@ -484,7 +573,7 @@ onBeforeUnmount(() => {
                     :aria-controls="stageToolsPanelId"
                     @click="toggleStageTools"
                   >
-                    {{ isStageToolsOpen ? '收起工具条' : '展开工具条' }}
+                    {{ isStageToolsOpen ? '收起工具' : '展开工具' }}
                   </button>
                   <button
                     ref="inspectorTriggerButtonRef"
@@ -494,39 +583,51 @@ onBeforeUnmount(() => {
                     :aria-controls="inspectorPanelId"
                     @click="openInspector"
                   >
-                    检查器
+                    调节面板
                   </button>
                 </div>
               </div>
-              <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div class="studio-readout flex items-center gap-3 px-3 py-2 text-xs">
-                  <div class="studio-readout__text">
-                    <span class="studio-readout__label">缩放</span>
-                    <span class="studio-readout__value">{{ zoomText }}</span>
-                  </div>
-                  <div class="h-4 w-px bg-[color:var(--studio-border)]" />
-                  <p class="text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasImage ? '视图动作只影响预览窗口，不会直接写坏原图。' : '上传图片后即可启用撤销、缩放与视图复位。' }}</p>
-                </div>
-                <div :id="stageToolsPanelId" class="flex-wrap gap-2" :class="[isStageToolsOpen ? 'flex' : 'hidden', 'lg:flex']">
-                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!canUndo || isCropMode" @click="undo"><WorkbenchIcon name="undo" :size="16" /><span>撤销</span></button>
-                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!canRedo || isCropMode" @click="redo"><WorkbenchIcon name="redo" :size="16" /><span>重做</span></button>
-                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!hasImage || isCropMode" @click="zoomOut"><WorkbenchIcon name="zoom-out" :size="16" /><span>缩小</span></button>
-                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!hasImage || isCropMode" @click="zoomIn"><WorkbenchIcon name="zoom-in" :size="16" /><span>放大</span></button>
-                  <button class="btn-soft workbench-icon-btn" type="button" :disabled="!hasImage || isCropMode" @click="resetViewport"><WorkbenchIcon name="viewport-reset" :size="16" /><span>复位视图</span></button>
-                </div>
-              </div>
             </div>
-            <div class="relative flex-1 p-3 md:p-4" :class="isFixedWorkbenchViewport ? 'min-h-0' : 'min-h-[420px]'">
-              <div class="editor-stage absolute inset-3 md:inset-4">
-                <canvas ref="canvasRef" class="block h-full w-full select-none rounded-4" />
+            <div class="stage-shell__viewport stage-shell__viewport--workspace" :class="isFixedWorkbenchViewport ? 'min-h-0' : 'min-h-[520px]'">
+              <input
+                ref="stageFileInputRef"
+                type="file"
+                accept="image/*"
+                tabindex="-1"
+                aria-hidden="true"
+                class="sr-only"
+                :disabled="isCropMode"
+                @change="onFileChange"
+              />
+              <div class="editor-stage absolute inset-4 md:inset-5">
+                <canvas ref="canvasRef" class="block h-full w-full select-none rounded-[22px]" />
               </div>
-              <div v-if="!hasImage" class="stage-empty absolute inset-3 flex items-center justify-center rounded-4 text-center text-sm md:inset-4">
-                <div class="max-w-[320px]">
-                  <div class="text-base font-semibold text-[color:var(--studio-ink)]">上传图片开始编辑</div>
-                  <div class="mt-2 text-xs leading-5 text-[color:var(--studio-ink-dim)]">使用上方按钮上传图片开始编辑。</div>
+              <div
+                v-if="!hasImage"
+                class="stage-empty absolute inset-4 flex items-center justify-center rounded-[22px] text-center md:inset-5"
+              >
+                <div class="stage-empty__body">
+                  <p class="stage-empty__eyebrow">Ready</p>
+                  <div class="stage-empty__title">上传一张图，把画布激活</div>
+                  <div class="stage-empty__copy">
+                    工具和调节都贴边悬浮，中间只留给画布。先给它一张图，界面才开始有价值。
+                  </div>
+                  <div class="stage-empty__actions">
+                    <button class="btn-primary workbench-icon-btn" type="button" @click="openStageFilePicker">
+                      <WorkbenchIcon name="upload" :size="16" />
+                      <span>上传图片</span>
+                    </button>
+                    <button class="btn-soft workbench-icon-btn" type="button" @click="restoreCurrentDraft">
+                      <WorkbenchIcon name="draft-restore" :size="16" />
+                      <span>恢复草稿</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div v-else class="stage-hint pointer-events-none absolute bottom-6 left-6 max-w-[280px] rounded-3 px-4 py-3 text-sm">
+              <div
+                v-if="hasImage"
+                class="stage-hint pointer-events-none absolute bottom-7 left-7 max-w-[320px] rounded-[18px] px-4 py-3 text-sm"
+              >
                 <div class="stage-hint__title">{{ stageModeLabel }}</div>
                 <div class="mt-1 text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ stageHint }}</div>
               </div>
