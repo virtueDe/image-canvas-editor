@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { captureHistorySnapshot } from './history';
+import { applyHistorySnapshot, captureHistorySnapshot } from './history';
 import { createLocalDraftStore } from './persistence';
 import type { EditorState } from './types';
 
@@ -15,6 +15,13 @@ const baseState = (): EditorState => ({
   cropRect: null,
   draftCropRect: null,
   cropMode: false,
+  textOverlay: {
+    text: '第一段',
+    xRatio: 0.25,
+    yRatio: 0.3,
+    fontSize: 32,
+    color: '#ffffff',
+  },
   texts: [
     {
       id: 'text-1',
@@ -64,11 +71,28 @@ const createStorageMock = () => {
 };
 
 describe('history snapshot with multi-text state', () => {
-  it('captures texts and activeTextId instead of single textOverlay', () => {
+  it('captures texts, activeTextId and textToolState instead of single textOverlay', () => {
     const snapshot = captureHistorySnapshot(baseState());
     expect(snapshot.texts).toHaveLength(1);
     expect(snapshot.activeTextId).toBe('text-1');
+    expect(snapshot.textToolState).toEqual(baseState().textToolState);
     expect('textOverlay' in snapshot).toBe(false);
+  });
+
+  it('restores textToolState from snapshot instead of keeping current state', () => {
+    const currentState: EditorState = {
+      ...baseState(),
+      textToolState: {
+        mode: 'idle',
+        hoverTextId: null,
+      },
+    };
+
+    const snapshot = captureHistorySnapshot(baseState());
+    const nextState = applyHistorySnapshot(currentState, snapshot);
+
+    expect(nextState.textToolState).toEqual(snapshot.textToolState);
+    expect(nextState.textOverlay).toEqual(baseState().textOverlay);
   });
 });
 

@@ -77,9 +77,10 @@ export interface EditorState {
   cropRect: Rect | null;
   draftCropRect: Rect | null;
   cropMode: boolean;
-  texts: TextItem[];
-  activeTextId: string | null;
-  textToolState: TextToolState;
+  textOverlay: TextOverlay | null;
+  texts?: TextItem[];
+  activeTextId?: string | null;
+  textToolState?: TextToolState;
   adjustments: EditorAdjustments;
   transform: EditorTransform;
   viewport: EditorViewport;
@@ -90,6 +91,7 @@ export interface SerializableEditorState {
   schemaVersion: number;
   image: Omit<ImageResource, 'element'> | null;
   cropRect: Rect | null;
+  textOverlay?: TextOverlay | null;
   texts: TextItem[];
   activeTextId: string | null;
   textToolState: TextToolState;

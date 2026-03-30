@@ -34,6 +34,13 @@ const createState = (overrides: Partial<EditorState> = {}): EditorState => ({
   cropRect: createRect(10, 20, 200, 120),
   draftCropRect: createRect(5, 6, 300, 200),
   cropMode: true,
+  textOverlay: {
+    text: '示例文案',
+    xRatio: 0.35,
+    yRatio: 0.42,
+    fontSize: 56,
+    color: '#E9C083',
+  },
   texts: [createText()],
   activeTextId: 'text-1',
   textToolState: {
@@ -74,6 +81,7 @@ describe('history snapshots', () => {
       cropRect: state.cropRect,
       texts: state.texts,
       activeTextId: state.activeTextId,
+      textToolState: state.textToolState,
       adjustments: state.adjustments,
       transform: state.transform,
       activePreset: state.activePreset,
@@ -108,6 +116,14 @@ describe('history snapshots', () => {
           }),
         ],
         activeTextId: 'text-2',
+        textToolState: {
+          mode: 'editing',
+          textId: 'text-2',
+          caretIndex: 2,
+          selectionStart: 1,
+          selectionEnd: 2,
+          composing: true,
+        },
         adjustments: {
           contrast: -30,
           exposure: 15,
@@ -128,13 +144,20 @@ describe('history snapshots', () => {
     expect(nextState.cropRect).toEqual(snapshot.cropRect);
     expect(nextState.texts).toEqual(snapshot.texts);
     expect(nextState.activeTextId).toEqual(snapshot.activeTextId);
+    expect(nextState.textToolState).toEqual(snapshot.textToolState);
     expect(nextState.adjustments).toEqual(snapshot.adjustments);
     expect(nextState.transform).toEqual(snapshot.transform);
     expect(nextState.activePreset).toEqual(snapshot.activePreset);
     expect(nextState.draftCropRect).toBeNull();
     expect(nextState.cropMode).toBe(false);
     expect(nextState.viewport).toEqual(currentState.viewport);
-    expect(nextState.textToolState).toEqual(currentState.textToolState);
+    expect(nextState.textOverlay).toEqual({
+      text: '回滚文字',
+      xRatio: 0.7,
+      yRatio: 0.3,
+      fontSize: 36,
+      color: '#38BDF8',
+    });
   });
 
   it('pushHistorySnapshot 超过上限时丢弃最旧记录，且相同快照不重复压栈', () => {
