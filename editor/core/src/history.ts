@@ -1,9 +1,10 @@
-import type { EditorState, ImageResource, Rect, TextOverlay } from './types';
+import type { EditorState, ImageResource, Rect, TextItem } from './types';
 
 export interface HistorySnapshot {
   image: ImageResource | null;
   cropRect: Rect | null;
-  textOverlay: TextOverlay | null;
+  texts: TextItem[];
+  activeTextId: string | null;
   adjustments: EditorState['adjustments'];
   transform: EditorState['transform'];
   activePreset: EditorState['activePreset'];
@@ -25,18 +26,13 @@ const cloneImage = (image: ImageResource | null): ImageResource | null => {
   return { ...image };
 };
 
-const cloneTextOverlay = (textOverlay: TextOverlay | null): TextOverlay | null => {
-  if (!textOverlay) {
-    return null;
-  }
-
-  return { ...textOverlay };
-};
+const cloneTexts = (texts: TextItem[]): TextItem[] => texts.map((text) => ({ ...text }));
 
 export const captureHistorySnapshot = (state: EditorState): HistorySnapshot => ({
   image: cloneImage(state.image),
   cropRect: cloneRect(state.cropRect),
-  textOverlay: cloneTextOverlay(state.textOverlay),
+  texts: cloneTexts(state.texts),
+  activeTextId: state.activeTextId,
   adjustments: { ...state.adjustments },
   transform: { ...state.transform },
   activePreset: state.activePreset,
@@ -67,22 +63,29 @@ export const snapshotsEqual = (left: HistorySnapshot, right: HistorySnapshot): b
       leftRect.width === rightRect.width &&
       leftRect.height === rightRect.height);
 
-  const leftTextOverlay = left.textOverlay;
-  const rightTextOverlay = right.textOverlay;
-  const textOverlayEqual =
-    leftTextOverlay === rightTextOverlay ||
-    (leftTextOverlay !== null &&
-      rightTextOverlay !== null &&
-      leftTextOverlay.text === rightTextOverlay.text &&
-      leftTextOverlay.xRatio === rightTextOverlay.xRatio &&
-      leftTextOverlay.yRatio === rightTextOverlay.yRatio &&
-      leftTextOverlay.fontSize === rightTextOverlay.fontSize &&
-      leftTextOverlay.color === rightTextOverlay.color);
+  const textsEqual =
+    left.texts.length === right.texts.length &&
+    left.texts.every((text, index) => {
+      const other = right.texts[index];
+
+      return (
+        other !== undefined &&
+        text.id === other.id &&
+        text.content === other.content &&
+        text.xRatio === other.xRatio &&
+        text.yRatio === other.yRatio &&
+        text.fontSize === other.fontSize &&
+        text.color === other.color &&
+        text.align === other.align &&
+        text.lineHeight === other.lineHeight
+      );
+    });
 
   return (
     imageEqual &&
     cropRectEqual &&
-    textOverlayEqual &&
+    textsEqual &&
+    left.activeTextId === right.activeTextId &&
     left.adjustments.contrast === right.adjustments.contrast &&
     left.adjustments.exposure === right.adjustments.exposure &&
     left.adjustments.highlights === right.adjustments.highlights &&
@@ -121,7 +124,8 @@ export const applyHistorySnapshot = (state: EditorState, snapshot: HistorySnapsh
   ...state,
   image: cloneImage(snapshot.image),
   cropRect: cloneRect(snapshot.cropRect),
-  textOverlay: cloneTextOverlay(snapshot.textOverlay),
+  texts: cloneTexts(snapshot.texts),
+  activeTextId: snapshot.activeTextId,
   draftCropRect: null,
   cropMode: false,
   adjustments: { ...snapshot.adjustments },

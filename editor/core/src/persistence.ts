@@ -1,7 +1,12 @@
 import type { EditorState, ImageResource, SerializableEditorState } from './types';
 import { loadImageFromDataUrl } from './utils';
 
-const DEFAULT_DRAFT_KEY = 'image-canvas-editor:draft';
+const DRAFT_STORAGE_KEY = 'image-canvas-editor:draft:v2';
+const DRAFT_SCHEMA_VERSION = 2;
+const createIdleTextToolState = (): SerializableEditorState['textToolState'] => ({
+  mode: 'idle',
+  hoverTextId: null,
+});
 
 export interface DraftStore {
   save(state: EditorState): void;
@@ -9,6 +14,7 @@ export interface DraftStore {
 }
 
 const toSerializable = (state: EditorState): SerializableEditorState => ({
+  schemaVersion: DRAFT_SCHEMA_VERSION,
   image: state.image
     ? {
         width: state.image.width,
@@ -18,7 +24,9 @@ const toSerializable = (state: EditorState): SerializableEditorState => ({
       }
     : null,
   cropRect: state.cropRect,
-  textOverlay: state.textOverlay,
+  texts: state.texts.map((text) => ({ ...text })),
+  activeTextId: state.activeTextId,
+  textToolState: { ...state.textToolState },
   adjustments: state.adjustments,
   transform: state.transform,
   activePreset: state.activePreset,
@@ -37,7 +45,7 @@ const hydrateImage = async (rawImage: SerializableEditorState['image']): Promise
   };
 };
 
-export const createLocalDraftStore = (storageKey = DEFAULT_DRAFT_KEY): DraftStore => ({
+export const createLocalDraftStore = (storageKey = DRAFT_STORAGE_KEY): DraftStore => ({
   save(state) {
     localStorage.setItem(storageKey, JSON.stringify(toSerializable(state)));
   },
@@ -53,8 +61,11 @@ export const createLocalDraftStore = (storageKey = DEFAULT_DRAFT_KEY): DraftStor
 
     return {
       ...parsed,
+      schemaVersion: parsed.schemaVersion ?? DRAFT_SCHEMA_VERSION,
       cropRect: parsed.cropRect ?? null,
-      textOverlay: parsed.textOverlay ?? null,
+      texts: parsed.texts?.map((text) => ({ ...text })) ?? [],
+      activeTextId: parsed.activeTextId ?? null,
+      textToolState: parsed.textToolState ?? createIdleTextToolState(),
       adjustments: parsed.adjustments ?? {
         contrast: 0,
         exposure: 0,

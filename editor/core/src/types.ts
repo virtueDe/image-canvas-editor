@@ -25,6 +25,37 @@ export interface EditorViewport {
   offsetY: number;
 }
 
+export interface TextItem {
+  id: string;
+  content: string;
+  xRatio: number;
+  yRatio: number;
+  fontSize: number;
+  color: string;
+  align: 'left' | 'center' | 'right';
+  lineHeight: number;
+}
+
+export type TextToolState =
+  | { mode: 'idle'; hoverTextId: string | null }
+  | { mode: 'inserting' }
+  | {
+      mode: 'editing';
+      textId: string;
+      caretIndex: number;
+      selectionStart: number;
+      selectionEnd: number;
+      composing: boolean;
+    }
+  | {
+      mode: 'dragging';
+      textId: string;
+      startClientX: number;
+      startClientY: number;
+      originXRatio: number;
+      originYRatio: number;
+    };
+
 export interface TextOverlay {
   text: string;
   xRatio: number;
@@ -46,7 +77,9 @@ export interface EditorState {
   cropRect: Rect | null;
   draftCropRect: Rect | null;
   cropMode: boolean;
-  textOverlay: TextOverlay | null;
+  texts: TextItem[];
+  activeTextId: string | null;
+  textToolState: TextToolState;
   adjustments: EditorAdjustments;
   transform: EditorTransform;
   viewport: EditorViewport;
@@ -54,9 +87,12 @@ export interface EditorState {
 }
 
 export interface SerializableEditorState {
+  schemaVersion: number;
   image: Omit<ImageResource, 'element'> | null;
   cropRect: Rect | null;
-  textOverlay: TextOverlay | null;
+  texts: TextItem[];
+  activeTextId: string | null;
+  textToolState: TextToolState;
   adjustments: EditorAdjustments;
   transform: EditorTransform;
   activePreset: FilterPreset;

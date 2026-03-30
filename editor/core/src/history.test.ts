@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { EditorState, ImageResource, Rect } from './types';
+import type { EditorState, ImageResource, Rect, TextItem } from './types';
 import { applyHistorySnapshot, captureHistorySnapshot, pushHistorySnapshot } from './history';
-import { createDefaultTextOverlay } from './text-overlay';
 
 const createImage = (name: string): ImageResource => ({
   element: {} as HTMLImageElement,
@@ -18,18 +17,32 @@ const createRect = (x: number, y: number, width: number, height: number): Rect =
   height,
 });
 
+const createText = (overrides: Partial<TextItem> = {}): TextItem => ({
+  id: 'text-1',
+  content: '示例文案',
+  xRatio: 0.35,
+  yRatio: 0.42,
+  fontSize: 56,
+  color: '#E9C083',
+  align: 'center',
+  lineHeight: 1.25,
+  ...overrides,
+});
+
 const createState = (overrides: Partial<EditorState> = {}): EditorState => ({
   image: createImage('sample.png'),
   cropRect: createRect(10, 20, 200, 120),
   draftCropRect: createRect(5, 6, 300, 200),
   cropMode: true,
-  textOverlay: {
-    ...createDefaultTextOverlay(),
-    text: '示例文案',
-    xRatio: 0.35,
-    yRatio: 0.42,
-    fontSize: 56,
-    color: '#E9C083',
+  texts: [createText()],
+  activeTextId: 'text-1',
+  textToolState: {
+    mode: 'editing',
+    textId: 'text-1',
+    caretIndex: 4,
+    selectionStart: 4,
+    selectionEnd: 4,
+    composing: false,
   },
   adjustments: {
     contrast: 10,
@@ -59,7 +72,8 @@ describe('history snapshots', () => {
     expect(snapshot).toEqual({
       image: state.image,
       cropRect: state.cropRect,
-      textOverlay: state.textOverlay,
+      texts: state.texts,
+      activeTextId: state.activeTextId,
       adjustments: state.adjustments,
       transform: state.transform,
       activePreset: state.activePreset,
@@ -83,14 +97,17 @@ describe('history snapshots', () => {
     const snapshot = captureHistorySnapshot(
       createState({
         cropRect: createRect(40, 50, 120, 80),
-        textOverlay: {
-          ...createDefaultTextOverlay(),
-          text: '回滚文字',
-          xRatio: 0.7,
-          yRatio: 0.3,
-          fontSize: 36,
-          color: '#38BDF8',
-        },
+        texts: [
+          createText({
+            id: 'text-2',
+            content: '回滚文字',
+            xRatio: 0.7,
+            yRatio: 0.3,
+            fontSize: 36,
+            color: '#38BDF8',
+          }),
+        ],
+        activeTextId: 'text-2',
         adjustments: {
           contrast: -30,
           exposure: 15,
@@ -109,13 +126,15 @@ describe('history snapshots', () => {
 
     expect(nextState.image).toEqual(snapshot.image);
     expect(nextState.cropRect).toEqual(snapshot.cropRect);
-    expect(nextState.textOverlay).toEqual(snapshot.textOverlay);
+    expect(nextState.texts).toEqual(snapshot.texts);
+    expect(nextState.activeTextId).toEqual(snapshot.activeTextId);
     expect(nextState.adjustments).toEqual(snapshot.adjustments);
     expect(nextState.transform).toEqual(snapshot.transform);
     expect(nextState.activePreset).toEqual(snapshot.activePreset);
     expect(nextState.draftCropRect).toBeNull();
     expect(nextState.cropMode).toBe(false);
     expect(nextState.viewport).toEqual(currentState.viewport);
+    expect(nextState.textToolState).toEqual(currentState.textToolState);
   });
 
   it('pushHistorySnapshot 超过上限时丢弃最旧记录，且相同快照不重复压栈', () => {
@@ -133,14 +152,15 @@ describe('history snapshots', () => {
     const snapshot4 = captureHistorySnapshot(
       createState({
         cropRect: createRect(100, 100, 400, 300),
-        textOverlay: {
-          ...createDefaultTextOverlay(),
-          text: '新文字',
-          xRatio: 0.5,
-          yRatio: 0.8,
-          fontSize: 64,
-          color: '#FB7185',
-        },
+        texts: [
+          createText({
+            content: '新文字',
+            xRatio: 0.5,
+            yRatio: 0.8,
+            fontSize: 64,
+            color: '#FB7185',
+          }),
+        ],
       }),
     );
 
