@@ -65,7 +65,9 @@ const resolveBodyX = (align: TextItem['align'], anchorX: number, width: number):
   }
 };
 
-export const splitTextLines = (content: string): string[] => content.split('\n');
+const normalizeLineBreaks = (content: string): string => content.replace(/\r\n?/g, '\n');
+
+export const splitTextLines = (content: string): string[] => normalizeLineBreaks(content).split('\n');
 
 export const resolveTextLayout = (
   item: TextItem,
@@ -89,15 +91,21 @@ export const resolveTextLayout = (
     };
   });
   const width = Math.max(item.fontSize * 0.5, ...measuredLines.map((line) => line.width));
-  const height = Math.max(item.fontSize, lineAdvance * measuredLines.length);
+  const firstLine = measuredLines[0]!;
+  const lastLine = measuredLines[measuredLines.length - 1]!;
+  const height =
+    firstLine.ascent +
+    lastLine.descent +
+    (measuredLines.length > 1 ? lineAdvance * (measuredLines.length - 1) : 0);
   const bodyX = resolveBodyX(item.align, anchorX, width);
   const bodyY = anchorY - height / 2;
+  const firstBaselineY = bodyY + firstLine.ascent;
 
   return {
     lines: measuredLines.map((line, index) => ({
       text: line.text,
       width: line.width,
-      baselineY: bodyY + line.ascent + index * lineAdvance,
+      baselineY: firstBaselineY + index * lineAdvance,
     })),
     width,
     height,
@@ -135,12 +143,18 @@ export const resolveTextScreenRect = (
   };
 };
 
-export const resolveDragHandleRect = (bodyRect: Rect): Rect => ({
-  x: bodyRect.x + bodyRect.width + DRAG_HANDLE_GAP,
-  y: bodyRect.y - DRAG_HANDLE_SIZE - DRAG_HANDLE_GAP,
+/**
+ * 基于屏幕空间正文矩形生成拖拽手柄命中区；请勿传入 source/image 坐标。
+ */
+export const resolveDragHandleScreenRect = (screenBodyRect: Rect): Rect => ({
+  x: screenBodyRect.x + screenBodyRect.width + DRAG_HANDLE_GAP,
+  y: screenBodyRect.y - DRAG_HANDLE_SIZE - DRAG_HANDLE_GAP,
   width: DRAG_HANDLE_SIZE,
   height: DRAG_HANDLE_SIZE,
 });
+
+export const resolveDragHandleRect = (screenBodyRect: Rect): Rect =>
+  resolveDragHandleScreenRect(screenBodyRect);
 
 export const isPointInTextBlock = (bodyRect: Rect, pointX: number, pointY: number): boolean =>
   pointX >= bodyRect.x &&

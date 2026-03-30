@@ -4,6 +4,7 @@ export { PRESET_OPTIONS } from './presets';
 export {
   isPointInTextBlock,
   resolveDragHandleRect,
+  resolveDragHandleScreenRect,
   resolveTextLayout,
   resolveTextScreenRect,
   splitTextLines,
