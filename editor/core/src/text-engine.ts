@@ -22,7 +22,7 @@ export interface TextLayout {
 }
 
 const FONT_FAMILY = '"Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
-const DRAG_HANDLE_SIZE = 18;
+const DRAG_HANDLE_SIZE = 24;
 const DRAG_HANDLE_GAP = 12;
 
 const fallbackMeasureText = (text: string, fontSize: number): TextMeasurement => ({
@@ -137,7 +137,7 @@ export const resolveTextScreenRect = (
 
 export const resolveDragHandleRect = (bodyRect: Rect): Rect => ({
   x: bodyRect.x + bodyRect.width + DRAG_HANDLE_GAP,
-  y: bodyRect.y + bodyRect.height / 2 - DRAG_HANDLE_SIZE / 2,
+  y: bodyRect.y - DRAG_HANDLE_SIZE - DRAG_HANDLE_GAP,
   width: DRAG_HANDLE_SIZE,
   height: DRAG_HANDLE_SIZE,
 });
