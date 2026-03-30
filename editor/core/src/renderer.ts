@@ -1,6 +1,6 @@
 import { createProcessedCanvas } from './image-processing';
-import type { CropViewMetrics, EditorState, PreviewViewMetrics, Rect } from './types';
-import { resolveTextOverlayScreenRect, sanitizeTextOverlay } from './text-overlay';
+import { resolveDragHandleScreenRect, resolveTextCaretScreenRect, resolveTextScreenRect } from './text-engine';
+import { normalizeTextState, type CropViewMetrics, type EditorState, type PreviewViewMetrics, type Rect } from './types';
 import { clamp, fullImageRect } from './utils';
 
 const HANDLE_SIZE = 10;
@@ -59,7 +59,7 @@ export class CanvasRenderer {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(processed.canvas, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
-    this.drawTextOverlaySelection(ctx, state, processed.canvas.width, processed.canvas.height, imageRect);
+    this.drawActiveTextSelection(ctx, state, processed.canvas.width, processed.canvas.height, imageRect);
     this.drawInfo(ctx, imageRect, `${processed.canvas.width} × ${processed.canvas.height} · ${Math.round(state.viewport.zoom * 100)}%`);
   }
 
@@ -172,19 +172,21 @@ export class CanvasRenderer {
     ctx.fillText(text, rect.x + paddingX, baselineY + 4);
   }
 
-  private drawTextOverlaySelection(
+  private drawActiveTextSelection(
     ctx: CanvasRenderingContext2D,
     state: EditorState,
     sourceWidth: number,
     sourceHeight: number,
     imageRect: Rect,
   ): void {
-    if (!state.textOverlay) {
+    const textState = normalizeTextState(state);
+    const activeText = textState.texts.find((text) => text.id === textState.activeTextId) ?? null;
+
+    if (!activeText) {
       return;
     }
 
-    const textOverlay = sanitizeTextOverlay(state.textOverlay);
-    const screenRect = resolveTextOverlayScreenRect(textOverlay, sourceWidth, sourceHeight, imageRect, (text, fontSize) => {
+    const screenRect = resolveTextScreenRect(activeText, sourceWidth, sourceHeight, imageRect, (text, fontSize) => {
       ctx.font = `${fontSize}px "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
       return ctx.measureText(text);
     });
@@ -200,6 +202,53 @@ export class CanvasRenderer {
     ctx.fillStyle = 'rgba(233, 192, 131, 0.12)';
     ctx.fillRect(screenRect.x - 6, screenRect.y - 6, screenRect.width + 12, screenRect.height + 12);
     ctx.strokeRect(screenRect.x - 6, screenRect.y - 6, screenRect.width + 12, screenRect.height + 12);
+    ctx.restore();
+
+    if (textState.textToolState.mode === 'editing' && textState.textToolState.textId === activeText.id) {
+      const caretRect = resolveTextCaretScreenRect(
+        activeText,
+        sourceWidth,
+        sourceHeight,
+        imageRect,
+        textState.textToolState.caretIndex,
+        (text, fontSize) => {
+          ctx.font = `${fontSize}px "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
+          return ctx.measureText(text);
+        },
+      );
+
+      if (caretRect) {
+        ctx.save();
+        ctx.fillStyle = '#f8fafc';
+        ctx.shadowColor = 'rgba(15, 23, 42, 0.45)';
+        ctx.shadowBlur = 8;
+        ctx.fillRect(caretRect.x, caretRect.y - 1, caretRect.width, caretRect.height + 2);
+        ctx.restore();
+      }
+    }
+
+    const handleRect = resolveDragHandleScreenRect(screenRect);
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.strokeStyle = 'rgba(233, 192, 131, 0.9)';
+    ctx.lineWidth = 1.25;
+    ctx.fillRect(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
+    ctx.strokeRect(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
+    ctx.fillStyle = '#e9c083';
+
+    const dotRadius = 1.5;
+    const dotXs = [handleRect.x + 7, handleRect.x + handleRect.width / 2, handleRect.x + handleRect.width - 7];
+    const dotYs = [handleRect.y + 8, handleRect.y + handleRect.height - 8];
+
+    for (const dotY of dotYs) {
+      for (const dotX of dotXs) {
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     ctx.restore();
   }
 

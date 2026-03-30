@@ -1,6 +1,6 @@
 import { PRESET_FILTERS } from './presets';
-import type { EditorAdjustments, EditorState, ImageResource, Rect } from './types';
-import { resolveTextOverlayDrawConfig, sanitizeTextOverlay } from './text-overlay';
+import { resolveTextLayout } from './text-engine';
+import { normalizeTextState, type EditorAdjustments, type EditorState, type ImageResource, type Rect } from './types';
 import { clamp, createCanvas, fullImageRect } from './utils';
 
 interface RenderOptions {
@@ -111,8 +111,12 @@ const transformCanvas = (
   return canvas;
 };
 
-const drawTextOverlay = (canvas: HTMLCanvasElement, state: EditorState): void => {
-  if (!state.textOverlay) {
+const FONT_FAMILY = '"Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
+
+const drawTexts = (canvas: HTMLCanvasElement, state: EditorState): void => {
+  const textState = normalizeTextState(state);
+
+  if (textState.texts.length === 0) {
     return;
   }
 
@@ -122,19 +126,24 @@ const drawTextOverlay = (canvas: HTMLCanvasElement, state: EditorState): void =>
     throw new Error('无法获取文字渲染上下文');
   }
 
-  const textOverlay = sanitizeTextOverlay(state.textOverlay);
-  const drawConfig = resolveTextOverlayDrawConfig(textOverlay, canvas.width, canvas.height, (text, fontSize) => {
-    ctx.font = `${fontSize}px "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
-    return ctx.measureText(text);
-  });
+  for (const textItem of textState.texts) {
+    const layout = resolveTextLayout(textItem, canvas.width, canvas.height, (text, fontSize) => {
+      ctx.font = `${fontSize}px ${FONT_FAMILY}`;
+      return ctx.measureText(text);
+    });
 
-  ctx.save();
-  ctx.font = drawConfig.font;
-  ctx.fillStyle = textOverlay.color;
-  ctx.textAlign = drawConfig.textAlign;
-  ctx.textBaseline = drawConfig.textBaseline;
-  ctx.fillText(drawConfig.text, drawConfig.x, drawConfig.y);
-  ctx.restore();
+    ctx.save();
+    ctx.font = `${textItem.fontSize}px ${FONT_FAMILY}`;
+    ctx.fillStyle = textItem.color;
+    ctx.textAlign = textItem.align;
+    ctx.textBaseline = 'alphabetic';
+
+    for (const line of layout.lines) {
+      ctx.fillText(line.text || ' ', layout.anchorX, line.baselineY);
+    }
+
+    ctx.restore();
+  }
 };
 
 export const createProcessedCanvas = (
@@ -159,7 +168,7 @@ export const createProcessedCanvas = (
         state.transform.flipY,
       );
 
-      drawTextOverlay(transformedCanvas, state);
+      drawTexts(transformedCanvas, state);
       return transformedCanvas;
     })(),
     cropRect,

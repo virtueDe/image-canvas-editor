@@ -9,7 +9,24 @@ import {
   snapshotsEqual,
   type HistorySnapshot,
 } from './history';
-import type { CropViewMetrics, EditorState, FilterPreset, ImageResource, PreviewViewMetrics, Rect } from './types';
+import {
+  createIdleTextToolState,
+  normalizeTextState,
+  textItemToTextOverlay,
+  type CropViewMetrics,
+  type EditorState,
+  type FilterPreset,
+  type ImageResource,
+  type PreviewViewMetrics,
+  type Rect,
+  type TextItem,
+  type TextToolState,
+} from './types';
+import {
+  isPointInTextBlock,
+  resolveDragHandleScreenRect,
+  resolveTextScreenRect,
+} from './text-engine';
 import {
   approximatelyFullRect,
   clamp,
@@ -21,8 +38,6 @@ import {
 } from './utils';
 import {
   createDefaultTextOverlay,
-  isPointInTextOverlay,
-  resolveTextOverlayScreenRect,
   sanitizeTextOverlay,
 } from './text-overlay';
 
@@ -39,11 +54,23 @@ type PreviewInteraction =
   | { mode: 'panning'; startClientX: number; startClientY: number; offsetX: number; offsetY: number }
   | {
       mode: 'moving-text';
+      textId: string;
       startClientX: number;
       startClientY: number;
-      textOverlay: NonNullable<EditorState['textOverlay']>;
+      originXRatio: number;
+      originYRatio: number;
       displayWidth: number;
       displayHeight: number;
+    };
+
+type TextHitTarget =
+  | {
+      type: 'body';
+      textId: string;
+    }
+  | {
+      type: 'handle';
+      textId: string;
     };
 
 export interface ImageCanvasEditorOptions {
@@ -61,12 +88,39 @@ const MAX_VIEWPORT_ZOOM = 4;
 const VIEWPORT_ZOOM_STEP = 0.2;
 const HISTORY_LIMIT = 100;
 
+const createEditingTextToolState = (textId: string, caretIndex: number): TextToolState => ({
+  mode: 'editing',
+  textId,
+  caretIndex,
+  selectionStart: caretIndex,
+  selectionEnd: caretIndex,
+  composing: false,
+});
+
+const createTextItem = (id: string, xRatio: number, yRatio: number, content = ''): TextItem => {
+  const defaults = createDefaultTextOverlay();
+
+  return {
+    id,
+    content,
+    xRatio: clamp(xRatio, 0, 1),
+    yRatio: clamp(yRatio, 0, 1),
+    fontSize: defaults.fontSize,
+    color: defaults.color,
+    align: 'center',
+    lineHeight: 1.25,
+  };
+};
+
 export const createInitialEditorState = (): EditorState => ({
   image: null,
   cropRect: null,
   draftCropRect: null,
   cropMode: false,
   textOverlay: null,
+  texts: [],
+  activeTextId: null,
+  textToolState: createIdleTextToolState(),
   adjustments: {
     contrast: 0,
     exposure: 0,
@@ -111,16 +165,74 @@ const getPointerOnPreview = (
   };
 };
 
-const getTextOverlayScreenRect = (
-  textOverlay: NonNullable<EditorState['textOverlay']>,
+const getPreviewDisplayRect = (metrics: PreviewViewMetrics): Rect => ({
+  x: metrics.displayX,
+  y: metrics.displayY,
+  width: metrics.displayWidth,
+  height: metrics.displayHeight,
+});
+
+const isPointOnPreviewImage = (
+  point: { canvasX: number; canvasY: number },
   metrics: PreviewViewMetrics,
-): Rect | null => {
-  return resolveTextOverlayScreenRect(sanitizeTextOverlay(textOverlay), metrics.sourceWidth, metrics.sourceHeight, {
-    x: metrics.displayX,
-    y: metrics.displayY,
-    width: metrics.displayWidth,
-    height: metrics.displayHeight,
-  });
+): boolean => pointInRect(point.canvasX, point.canvasY, getPreviewDisplayRect(metrics));
+
+const getPointerPreviewRatio = (
+  point: { canvasX: number; canvasY: number },
+  metrics: PreviewViewMetrics,
+): { xRatio: number; yRatio: number } => ({
+  xRatio:
+    metrics.displayWidth > 0 ? clamp((point.canvasX - metrics.displayX) / metrics.displayWidth, 0, 1) : 0.5,
+  yRatio:
+    metrics.displayHeight > 0 ? clamp((point.canvasY - metrics.displayY) / metrics.displayHeight, 0, 1) : 0.5,
+});
+
+const resolveTextHitTarget = (
+  state: EditorState,
+  metrics: PreviewViewMetrics,
+  pointX: number,
+  pointY: number,
+): TextHitTarget | null => {
+  const textState = normalizeTextState(state);
+  const displayRect = getPreviewDisplayRect(metrics);
+  const activeText = textState.texts.find((text) => text.id === textState.activeTextId) ?? null;
+
+  if (activeText) {
+    const activeTextRect = resolveTextScreenRect(
+      activeText,
+      metrics.sourceWidth,
+      metrics.sourceHeight,
+      displayRect,
+    );
+
+    if (activeTextRect) {
+      const handleRect = resolveDragHandleScreenRect(activeTextRect);
+
+      if (pointInRect(pointX, pointY, handleRect)) {
+        return {
+          type: 'handle',
+          textId: activeText.id,
+        };
+      }
+    }
+  }
+
+  const bodyHitOrder = activeText
+    ? [activeText, ...textState.texts.filter((text) => text.id !== activeText.id).reverse()]
+    : [...textState.texts].reverse();
+
+  for (const text of bodyHitOrder) {
+    const bodyRect = resolveTextScreenRect(text, metrics.sourceWidth, metrics.sourceHeight, displayRect);
+
+    if (bodyRect && isPointInTextBlock(bodyRect, pointX, pointY)) {
+      return {
+        type: 'body',
+        textId: text.id,
+      };
+    }
+  }
+
+  return null;
 };
 
 const getPointerOnImage = (
@@ -167,6 +279,7 @@ export class ImageCanvasEditor {
   private renderer: CanvasRenderer | null = null;
   private readonly draftStore: DraftStore;
   private readonly store = new EditorStore(createInitialEditorState());
+  private nextTextId = 1;
   private undoStack: HistorySnapshot[] = [];
   private redoStack: HistorySnapshot[] = [];
   private pendingHistorySnapshot: HistorySnapshot | null = null;
@@ -193,23 +306,50 @@ export class ImageCanvasEditor {
     }
 
     if (!state.cropMode && previewMetrics) {
-      canvas.setPointerCapture(event.pointerId);
       const point = getPointerOnPreview(event, canvas);
-      const textOverlayRect = state.textOverlay ? getTextOverlayScreenRect(state.textOverlay, previewMetrics) : null;
+      const textState = normalizeTextState(state);
+      const editingTextId = textState.textToolState.mode === 'editing' ? textState.textToolState.textId : null;
 
-      if (state.textOverlay && textOverlayRect && isPointInTextOverlay(textOverlayRect, point.canvasX, point.canvasY, 8)) {
-        this.previewInteraction = {
-          mode: 'moving-text',
-          startClientX: event.clientX,
-          startClientY: event.clientY,
-          textOverlay: sanitizeTextOverlay(state.textOverlay),
-          displayWidth: previewMetrics.displayWidth,
-          displayHeight: previewMetrics.displayHeight,
-        };
-        this.syncCanvasCursor();
+      if (textState.textToolState.mode === 'inserting') {
+        if (isPointOnPreviewImage(point, previewMetrics)) {
+          const nextPosition = getPointerPreviewRatio(point, previewMetrics);
+          this.placeTextAt(nextPosition.xRatio, nextPosition.yRatio);
+        }
+
         return;
       }
 
+      const hitTarget = resolveTextHitTarget(state, previewMetrics, point.canvasX, point.canvasY);
+
+      if (editingTextId && !hitTarget) {
+        this.finishTextEditing();
+        return;
+      }
+
+      if (hitTarget) {
+        const shouldFinishCurrentEditing =
+          editingTextId !== null &&
+          (hitTarget.type === 'handle' || hitTarget.textId !== editingTextId);
+
+        if (shouldFinishCurrentEditing) {
+          this.finishTextEditing();
+        }
+
+        if (hitTarget.type === 'handle') {
+          canvas.setPointerCapture(event.pointerId);
+          this.beginTextDrag(hitTarget.textId, event.clientX, event.clientY, previewMetrics);
+          return;
+        }
+
+        if (editingTextId === hitTarget.textId) {
+          return;
+        }
+
+        this.focusText(hitTarget.textId);
+        return;
+      }
+
+      canvas.setPointerCapture(event.pointerId);
       this.previewInteraction = {
         mode: 'panning',
         startClientX: event.clientX,
@@ -277,24 +417,16 @@ export class ImageCanvasEditor {
     }
 
     if (this.previewInteraction.mode === 'moving-text' && !state.cropMode) {
-      const nextTextOverlay = sanitizeTextOverlay({
-        ...this.previewInteraction.textOverlay,
-        xRatio:
-          this.previewInteraction.textOverlay.xRatio +
+      this.dragTextTo(
+        this.previewInteraction.originXRatio +
           (this.previewInteraction.displayWidth > 0
             ? (event.clientX - this.previewInteraction.startClientX) / this.previewInteraction.displayWidth
             : 0),
-        yRatio:
-          this.previewInteraction.textOverlay.yRatio +
+        this.previewInteraction.originYRatio +
           (this.previewInteraction.displayHeight > 0
             ? (event.clientY - this.previewInteraction.startClientY) / this.previewInteraction.displayHeight
             : 0),
-      });
-
-      this.previewChange((currentState) => ({
-        ...currentState,
-        textOverlay: nextTextOverlay,
-      }));
+      );
       return;
     }
 
@@ -427,7 +559,6 @@ export class ImageCanvasEditor {
 
   private readonly stopCropInteraction = (event: PointerEvent): void => {
     const previewInteraction = this.previewInteraction;
-    const finalTextOverlay = previewInteraction.mode === 'moving-text' ? this.store.getState().textOverlay : null;
 
     if (this.canvas?.hasPointerCapture(event.pointerId)) {
       this.canvas.releasePointerCapture(event.pointerId);
@@ -435,13 +566,13 @@ export class ImageCanvasEditor {
 
     this.cropInteraction = { mode: 'idle' };
     this.previewInteraction = { mode: 'idle' };
-    this.syncCanvasCursor();
 
-    if (previewInteraction.mode === 'moving-text' && finalTextOverlay) {
-      this.commitChange({
-        textOverlay: finalTextOverlay,
-      });
+    if (previewInteraction.mode === 'moving-text') {
+      this.finishTextDrag();
+      return;
     }
+
+    this.syncCanvasCursor();
   };
 
   constructor(options: ImageCanvasEditorOptions = {}) {
@@ -591,72 +722,428 @@ export class ImageCanvasEditor {
     });
   }
 
-  ensureTextOverlay(): void {
+  startTextInsertion(): void {
     const state = this.store.getState();
 
-    if (!state.image || state.cropMode || state.textOverlay) {
+    if (state.cropMode) {
       return;
     }
 
-    this.commitChange({
-      textOverlay: createDefaultTextOverlay(),
+    this.setState((currentState) => ({
+      ...currentState,
+      textToolState: { mode: 'inserting' },
+    }));
+  }
+
+  placeTextAt(xRatio: number, yRatio: number): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (this.store.getState().cropMode || state.textToolState.mode !== 'inserting') {
+      return;
+    }
+
+    const textId = this.createTextId(state.texts);
+    const text = createTextItem(textId, xRatio, yRatio);
+
+    this.previewChange((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+
+      const nextTexts = [...currentTextState.texts, text];
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(nextTexts, textId, createEditingTextToolState(textId, text.content.length)),
+      };
     });
   }
 
-  removeTextOverlay(): void {
-    const state = this.store.getState();
+  focusText(textId: string): void {
+    const state = normalizeTextState(this.store.getState());
+    const activeText = state.texts.find((text) => text.id === textId);
 
-    if (!state.image || state.cropMode || !state.textOverlay) {
+    if (this.store.getState().cropMode || !activeText) {
       return;
     }
 
-    this.commitChange({
-      textOverlay: null,
+    this.setState((currentState) => ({
+      ...currentState,
+      ...this.createTextStatePatch(
+        normalizeTextState(currentState).texts,
+        textId,
+        createEditingTextToolState(textId, activeText.content.length),
+      ),
+    }));
+  }
+
+  insertText(text: string): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (state.textToolState.mode !== 'editing') {
+      return;
+    }
+
+    this.previewChange((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+
+      if (currentTextState.textToolState.mode !== 'editing') {
+        return currentState;
+      }
+
+      const editingState = currentTextState.textToolState;
+      const activeText = currentTextState.texts.find((item) => item.id === editingState.textId);
+
+      if (!activeText) {
+        return currentState;
+      }
+
+      const selectionStart = Math.min(editingState.selectionStart, editingState.selectionEnd);
+      const selectionEnd = Math.max(editingState.selectionStart, editingState.selectionEnd);
+      const nextContent =
+        activeText.content.slice(0, selectionStart) + text + activeText.content.slice(selectionEnd);
+      const nextCaretIndex = selectionStart + text.length;
+      const nextTexts = currentTextState.texts.map((item) =>
+        item.id === activeText.id
+          ? {
+              ...item,
+              content: nextContent,
+            }
+          : item,
+      );
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(nextTexts, activeText.id, createEditingTextToolState(activeText.id, nextCaretIndex)),
+      };
+    });
+  }
+
+  insertLineBreak(): void {
+    this.insertText('\n');
+  }
+
+  replaceActiveTextContent(content: string, selectionStart = content.length, selectionEnd = selectionStart): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (state.textToolState.mode !== 'editing') {
+      return;
+    }
+
+    const safeSelectionStart = clamp(selectionStart, 0, content.length);
+    const safeSelectionEnd = clamp(selectionEnd, 0, content.length);
+
+    this.previewChange((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+
+      if (currentTextState.textToolState.mode !== 'editing') {
+        return currentState;
+      }
+
+      const editingState = currentTextState.textToolState;
+      const activeText = currentTextState.texts.find((item) => item.id === editingState.textId);
+
+      if (!activeText) {
+        return currentState;
+      }
+
+      const nextTexts = currentTextState.texts.map((item) =>
+        item.id === activeText.id
+          ? {
+              ...item,
+              content,
+            }
+          : item,
+      );
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(nextTexts, activeText.id, {
+          ...editingState,
+          caretIndex: safeSelectionEnd,
+          selectionStart: safeSelectionStart,
+          selectionEnd: safeSelectionEnd,
+        }),
+      };
+    });
+  }
+
+  updateActiveTextSelection(selectionStart: number, selectionEnd: number): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (state.textToolState.mode !== 'editing') {
+      return;
+    }
+
+    const editingState = state.textToolState;
+    const activeText = state.texts.find((item) => item.id === editingState.textId);
+
+    if (!activeText) {
+      return;
+    }
+
+    const safeSelectionStart = clamp(selectionStart, 0, activeText.content.length);
+    const safeSelectionEnd = clamp(selectionEnd, 0, activeText.content.length);
+
+    this.setState((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+
+      if (currentTextState.textToolState.mode !== 'editing') {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(currentTextState.texts, currentTextState.activeTextId, {
+          ...currentTextState.textToolState,
+          caretIndex: safeSelectionEnd,
+          selectionStart: safeSelectionStart,
+          selectionEnd: safeSelectionEnd,
+        }),
+      };
+    });
+  }
+
+  setActiveTextComposing(composing: boolean): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (state.textToolState.mode !== 'editing') {
+      return;
+    }
+
+    this.setState((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+
+      if (currentTextState.textToolState.mode !== 'editing') {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(currentTextState.texts, currentTextState.activeTextId, {
+          ...currentTextState.textToolState,
+          composing,
+        }),
+      };
+    });
+  }
+
+  finishTextEditing(): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (state.textToolState.mode !== 'editing' && state.textToolState.mode !== 'inserting') {
+      return;
+    }
+
+    this.commitPreviewState((previewState) => {
+      const previewTextState = normalizeTextState(previewState);
+      const previewToolState = previewTextState.textToolState;
+      let nextTexts = previewTextState.texts;
+      let nextActiveTextId = previewTextState.activeTextId;
+
+      if (previewToolState.mode === 'editing') {
+        const activeText = previewTextState.texts.find((text) => text.id === previewToolState.textId);
+
+        if (activeText && activeText.content.length === 0) {
+          nextTexts = previewTextState.texts.filter((text) => text.id !== activeText.id);
+          nextActiveTextId = nextTexts[0]?.id ?? null;
+        }
+      }
+
+      return {
+        ...previewState,
+        ...this.createTextStatePatch(nextTexts, nextActiveTextId, createIdleTextToolState()),
+      };
+    });
+  }
+
+  startTextDrag(textId: string): void {
+    const state = normalizeTextState(this.store.getState());
+    const activeText = state.texts.find((text) => text.id === textId);
+
+    if (this.store.getState().cropMode || !activeText) {
+      return;
+    }
+
+    this.setState((currentState) => ({
+      ...currentState,
+      ...this.createTextStatePatch(normalizeTextState(currentState).texts, textId, {
+        mode: 'dragging',
+        textId,
+        startClientX: 0,
+        startClientY: 0,
+        originXRatio: activeText.xRatio,
+        originYRatio: activeText.yRatio,
+      }),
+    }));
+  }
+
+  dragTextTo(xRatio: number, yRatio: number): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (state.textToolState.mode !== 'dragging') {
+      return;
+    }
+
+    this.previewChange((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+
+      if (currentTextState.textToolState.mode !== 'dragging') {
+        return currentState;
+      }
+
+      const draggingState = currentTextState.textToolState;
+      const nextTexts = currentTextState.texts.map((text) =>
+        text.id === draggingState.textId
+          ? {
+              ...text,
+              xRatio: clamp(xRatio, 0, 1),
+              yRatio: clamp(yRatio, 0, 1),
+            }
+          : text,
+      );
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(nextTexts, draggingState.textId, draggingState),
+      };
+    });
+  }
+
+  finishTextDrag(): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (state.textToolState.mode !== 'dragging') {
+      return;
+    }
+
+    this.commitPreviewState((previewState) => ({
+      ...previewState,
+      ...this.createTextStatePatch(normalizeTextState(previewState).texts, normalizeTextState(previewState).activeTextId, createIdleTextToolState()),
+    }));
+  }
+
+  ensureTextOverlay(): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (this.store.getState().cropMode || state.texts.length > 0) {
+      return;
+    }
+
+    const textId = this.createTextId(state.texts);
+    const text = createTextItem(textId, 0.5, 0.18, createDefaultTextOverlay().text);
+
+    this.commitChange((currentState) => ({
+      ...currentState,
+      ...this.createTextStatePatch(
+        [...normalizeTextState(currentState).texts, text],
+        textId,
+        createIdleTextToolState(),
+      ),
+    }));
+  }
+
+  removeTextOverlay(): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (this.store.getState().cropMode || !state.activeTextId) {
+      return;
+    }
+
+    this.commitChange((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+      const nextTexts = currentTextState.texts.filter((text) => text.id !== currentTextState.activeTextId);
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(nextTexts, nextTexts[0]?.id ?? null, createIdleTextToolState()),
+      };
     });
   }
 
   updateTextOverlayText(text: string): void {
-    const state = this.store.getState();
+    const state = normalizeTextState(this.store.getState());
 
-    if (!state.image || state.cropMode || !state.textOverlay) {
+    if (this.store.getState().cropMode || !state.activeTextId) {
       return;
     }
 
-    this.commitChange({
-      textOverlay: sanitizeTextOverlay({
-        ...state.textOverlay,
-        text,
-      }),
+    this.commitChange((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+      const nextTexts = currentTextState.texts.map((item) =>
+        item.id === currentTextState.activeTextId
+          ? {
+              ...item,
+              content: text,
+            }
+          : item,
+      );
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(nextTexts, currentTextState.activeTextId, currentTextState.textToolState),
+      };
     });
   }
 
   updateTextOverlayFontSize(fontSize: number): void {
-    const state = this.store.getState();
+    const state = normalizeTextState(this.store.getState());
 
-    if (!state.image || state.cropMode || !state.textOverlay) {
+    if (this.store.getState().cropMode || !state.activeTextId) {
       return;
     }
 
-    this.commitChange({
-      textOverlay: sanitizeTextOverlay({
-        ...state.textOverlay,
+    this.commitChange((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+      const activeText = currentTextState.texts.find((item) => item.id === currentTextState.activeTextId);
+
+      if (!activeText) {
+        return currentState;
+      }
+
+      const normalizedOverlay = sanitizeTextOverlay({
+        text: activeText.content,
+        xRatio: activeText.xRatio,
+        yRatio: activeText.yRatio,
         fontSize,
-      }),
+        color: activeText.color,
+      });
+      const nextTexts = currentTextState.texts.map((item) =>
+        item.id === activeText.id
+          ? {
+              ...item,
+              fontSize: normalizedOverlay.fontSize,
+            }
+          : item,
+      );
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(nextTexts, currentTextState.activeTextId, currentTextState.textToolState),
+      };
     });
   }
 
   updateTextOverlayColor(color: string): void {
-    const state = this.store.getState();
+    const state = normalizeTextState(this.store.getState());
 
-    if (!state.image || state.cropMode || !state.textOverlay) {
+    if (this.store.getState().cropMode || !state.activeTextId) {
       return;
     }
 
-    this.commitChange({
-      textOverlay: {
-        ...state.textOverlay,
-        color,
-      },
+    this.commitChange((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+      const nextTexts = currentTextState.texts.map((item) =>
+        item.id === currentTextState.activeTextId
+          ? {
+              ...item,
+              color,
+            }
+          : item,
+      );
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(nextTexts, currentTextState.activeTextId, currentTextState.textToolState),
+      };
     });
   }
 
@@ -881,6 +1368,9 @@ export class ImageCanvasEditor {
       image: draft.image,
       cropRect: draft.cropRect,
       textOverlay: draft.textOverlay ?? null,
+      texts: draft.texts,
+      activeTextId: draft.activeTextId,
+      textToolState: draft.textToolState,
       draftCropRect: null,
       cropMode: false,
       adjustments: draft.adjustments,
@@ -901,7 +1391,7 @@ export class ImageCanvasEditor {
   }
 
   private setState(updater: Partial<EditorState> | ((currentState: EditorState) => EditorState)): void {
-    this.store.setState(updater);
+    this.store.setState(this.resolveStateUpdater(updater, this.store.getState()));
     this.render();
   }
 
@@ -919,23 +1409,20 @@ export class ImageCanvasEditor {
     updater: Partial<EditorState> | ((currentState: EditorState) => EditorState),
     currentState: EditorState,
   ): EditorState {
-    if (typeof updater === 'function') {
-      return updater(currentState);
-    }
+    const nextState =
+      typeof updater === 'function'
+        ? updater(currentState)
+        : {
+            ...currentState,
+            ...updater,
+          };
 
-    return {
-      ...currentState,
-      ...updater,
-    };
+    return this.synchronizeTextState(nextState);
   }
 
   private previewChange(updater: Partial<EditorState> | ((currentState: EditorState) => EditorState)): void {
     const currentState = this.store.getState();
     const baselineSnapshot = this.pendingHistorySnapshot ?? captureHistorySnapshot(currentState);
-
-    if (!currentState.image) {
-      return;
-    }
 
     if (!this.pendingHistorySnapshot) {
       this.pendingHistorySnapshot = baselineSnapshot;
@@ -949,6 +1436,23 @@ export class ImageCanvasEditor {
     }
 
     this.store.setState(nextState);
+    this.render();
+  }
+
+  private commitPreviewState(updater?: (currentState: EditorState) => EditorState): void {
+    const currentState = this.getCommittedState();
+    const baselineSnapshot = captureHistorySnapshot(currentState);
+    const previewState = updater ? this.resolveStateUpdater(updater, this.store.getState()) : this.store.getState();
+    const nextSnapshot = captureHistorySnapshot(previewState);
+
+    this.clearPendingPreview();
+
+    if (!snapshotsEqual(baselineSnapshot, nextSnapshot)) {
+      this.undoStack = pushHistorySnapshot(this.undoStack, baselineSnapshot, HISTORY_LIMIT);
+      this.redoStack = [];
+    }
+
+    this.store.setState(previewState);
     this.render();
   }
 
@@ -977,6 +1481,86 @@ export class ImageCanvasEditor {
     }
 
     return applyHistorySnapshot(currentState, this.pendingHistorySnapshot);
+  }
+
+  private beginTextDrag(
+    textId: string,
+    startClientX: number,
+    startClientY: number,
+    previewMetrics: PreviewViewMetrics,
+  ): void {
+    const textState = normalizeTextState(this.store.getState());
+    const activeText = textState.texts.find((text) => text.id === textId);
+
+    if (!activeText) {
+      return;
+    }
+
+    this.previewInteraction = {
+      mode: 'moving-text',
+      textId,
+      startClientX,
+      startClientY,
+      originXRatio: activeText.xRatio,
+      originYRatio: activeText.yRatio,
+      displayWidth: previewMetrics.displayWidth,
+      displayHeight: previewMetrics.displayHeight,
+    };
+    this.setState((currentState) => ({
+      ...currentState,
+      ...this.createTextStatePatch(normalizeTextState(currentState).texts, textId, {
+        mode: 'dragging',
+        textId,
+        startClientX,
+        startClientY,
+        originXRatio: activeText.xRatio,
+        originYRatio: activeText.yRatio,
+      }),
+    }));
+  }
+
+  private synchronizeTextState(state: EditorState): EditorState {
+    const normalizedTextState = normalizeTextState(state);
+
+    return {
+      ...state,
+      textOverlay: normalizedTextState.textOverlay,
+      texts: normalizedTextState.texts,
+      activeTextId: normalizedTextState.activeTextId,
+      textToolState: normalizedTextState.textToolState,
+    };
+  }
+
+  private createTextStatePatch(
+    texts: TextItem[],
+    activeTextId: string | null,
+    textToolState: TextToolState,
+  ): Pick<EditorState, 'textOverlay' | 'texts' | 'activeTextId' | 'textToolState'> {
+    const normalizedTextState = normalizeTextState({
+      texts,
+      activeTextId,
+      textToolState,
+      textOverlay: textItemToTextOverlay(texts.find((text) => text.id === activeTextId) ?? texts[0] ?? null),
+    });
+
+    return {
+      textOverlay: normalizedTextState.textOverlay,
+      texts: normalizedTextState.texts,
+      activeTextId: normalizedTextState.activeTextId,
+      textToolState: normalizedTextState.textToolState,
+    };
+  }
+
+  private createTextId(texts: TextItem[]): string {
+    let textId = `text-${this.nextTextId}`;
+
+    while (texts.some((text) => text.id === textId)) {
+      this.nextTextId += 1;
+      textId = `text-${this.nextTextId}`;
+    }
+
+    this.nextTextId += 1;
+    return textId;
   }
 
   private setViewport(nextViewport: Partial<EditorState['viewport']>): void {
@@ -1092,8 +1676,23 @@ export class ImageCanvasEditor {
       return;
     }
 
+    if (this.previewInteraction.mode === 'moving-text' || this.previewInteraction.mode === 'panning') {
+      this.canvas.style.cursor = 'grabbing';
+      return;
+    }
+
+    if (state.textToolState?.mode === 'inserting') {
+      this.canvas.style.cursor = 'crosshair';
+      return;
+    }
+
+    if (state.textToolState?.mode === 'editing') {
+      this.canvas.style.cursor = 'text';
+      return;
+    }
+
     this.canvas.style.cursor =
-      this.previewInteraction.mode === 'moving-text' || this.previewInteraction.mode === 'panning' ? 'grabbing' : 'grab';
+      normalizeTextState(state).texts.length > 0 ? 'grab' : 'default';
   }
 
   private render(): void {

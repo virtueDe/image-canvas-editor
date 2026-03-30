@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { EditorState, ImageResource, Rect } from './types';
+import type { EditorState, ImageResource, Rect, TextItem } from './types';
 import { applyHistorySnapshot, captureHistorySnapshot, pushHistorySnapshot } from './history';
-import { createDefaultTextOverlay } from './text-overlay';
 
 const createImage = (name: string): ImageResource => ({
   element: {} as HTMLImageElement,
@@ -18,18 +17,39 @@ const createRect = (x: number, y: number, width: number, height: number): Rect =
   height,
 });
 
+const createText = (overrides: Partial<TextItem> = {}): TextItem => ({
+  id: 'text-1',
+  content: '示例文案',
+  xRatio: 0.35,
+  yRatio: 0.42,
+  fontSize: 56,
+  color: '#E9C083',
+  align: 'center',
+  lineHeight: 1.25,
+  ...overrides,
+});
+
 const createState = (overrides: Partial<EditorState> = {}): EditorState => ({
   image: createImage('sample.png'),
   cropRect: createRect(10, 20, 200, 120),
   draftCropRect: createRect(5, 6, 300, 200),
   cropMode: true,
   textOverlay: {
-    ...createDefaultTextOverlay(),
     text: '示例文案',
     xRatio: 0.35,
     yRatio: 0.42,
     fontSize: 56,
     color: '#E9C083',
+  },
+  texts: [createText()],
+  activeTextId: 'text-1',
+  textToolState: {
+    mode: 'editing',
+    textId: 'text-1',
+    caretIndex: 4,
+    selectionStart: 4,
+    selectionEnd: 4,
+    composing: false,
   },
   adjustments: {
     contrast: 10,
@@ -59,7 +79,9 @@ describe('history snapshots', () => {
     expect(snapshot).toEqual({
       image: state.image,
       cropRect: state.cropRect,
-      textOverlay: state.textOverlay,
+      texts: state.texts,
+      activeTextId: state.activeTextId,
+      textToolState: state.textToolState,
       adjustments: state.adjustments,
       transform: state.transform,
       activePreset: state.activePreset,
@@ -83,13 +105,25 @@ describe('history snapshots', () => {
     const snapshot = captureHistorySnapshot(
       createState({
         cropRect: createRect(40, 50, 120, 80),
-        textOverlay: {
-          ...createDefaultTextOverlay(),
-          text: '回滚文字',
-          xRatio: 0.7,
-          yRatio: 0.3,
-          fontSize: 36,
-          color: '#38BDF8',
+        textOverlay: null,
+        texts: [
+          createText({
+            id: 'text-2',
+            content: '回滚文字',
+            xRatio: 0.7,
+            yRatio: 0.3,
+            fontSize: 36,
+            color: '#38BDF8',
+          }),
+        ],
+        activeTextId: 'text-2',
+        textToolState: {
+          mode: 'editing',
+          textId: 'text-2',
+          caretIndex: 2,
+          selectionStart: 1,
+          selectionEnd: 2,
+          composing: true,
         },
         adjustments: {
           contrast: -30,
@@ -109,13 +143,208 @@ describe('history snapshots', () => {
 
     expect(nextState.image).toEqual(snapshot.image);
     expect(nextState.cropRect).toEqual(snapshot.cropRect);
-    expect(nextState.textOverlay).toEqual(snapshot.textOverlay);
+    expect(nextState.texts).toEqual(snapshot.texts);
+    expect(nextState.activeTextId).toEqual(snapshot.activeTextId);
+    expect(nextState.textToolState).toEqual(snapshot.textToolState);
     expect(nextState.adjustments).toEqual(snapshot.adjustments);
     expect(nextState.transform).toEqual(snapshot.transform);
     expect(nextState.activePreset).toEqual(snapshot.activePreset);
     expect(nextState.draftCropRect).toBeNull();
     expect(nextState.cropMode).toBe(false);
     expect(nextState.viewport).toEqual(currentState.viewport);
+    expect(nextState.textOverlay).toEqual({
+      text: '回滚文字',
+      xRatio: 0.7,
+      yRatio: 0.3,
+      fontSize: 36,
+      color: '#38BDF8',
+    });
+  });
+
+  it('在历史恢复后仅修改 textOverlay 时，重新抓取快照也会保留最新文本', () => {
+    const restoredState = applyHistorySnapshot(
+      createState(),
+      captureHistorySnapshot(
+        createState({
+          textOverlay: null,
+          texts: [
+            createText({
+              id: 'text-2',
+              content: '旧文字',
+              xRatio: 0.4,
+              yRatio: 0.6,
+              fontSize: 40,
+              color: '#22C55E',
+            }),
+          ],
+          activeTextId: 'text-2',
+          textToolState: {
+            mode: 'editing',
+            textId: 'text-2',
+            caretIndex: 1,
+            selectionStart: 1,
+            selectionEnd: 1,
+            composing: false,
+          },
+        }),
+      ),
+    );
+
+    const legacyEditedState: EditorState = {
+      ...restoredState,
+      textOverlay: {
+        ...restoredState.textOverlay!,
+        text: '最新文字',
+        xRatio: 0.55,
+      },
+    };
+
+    const snapshot = captureHistorySnapshot(legacyEditedState);
+
+    expect(snapshot.texts).toEqual([
+      {
+        id: 'text-2',
+        content: '最新文字',
+        xRatio: 0.55,
+        yRatio: 0.6,
+        fontSize: 40,
+        color: '#22C55E',
+        align: 'center',
+        lineHeight: 1.25,
+      },
+    ]);
+    expect(snapshot.activeTextId).toBe('text-2');
+  });
+
+  it('多文字状态下 legacy textOverlay 只会合并当前激活文字，不会丢掉其他项', () => {
+    const snapshot = captureHistorySnapshot(
+      createState({
+        textOverlay: {
+          text: '第二条最新文本',
+          xRatio: 0.72,
+          yRatio: 0.66,
+          fontSize: 44,
+          color: '#F97316',
+        },
+        texts: [
+          createText({
+            id: 'text-1',
+            content: '第一条保持不变',
+            xRatio: 0.2,
+            yRatio: 0.25,
+            fontSize: 30,
+            color: '#E2E8F0',
+            align: 'left',
+            lineHeight: 1.6,
+          }),
+          createText({
+            id: 'text-2',
+            content: '第二条旧文本',
+            xRatio: 0.62,
+            yRatio: 0.58,
+            fontSize: 38,
+            color: '#22C55E',
+            align: 'right',
+            lineHeight: 1.8,
+          }),
+        ],
+        activeTextId: 'text-2',
+        textToolState: {
+          mode: 'editing',
+          textId: 'text-2',
+          caretIndex: 2,
+          selectionStart: 2,
+          selectionEnd: 2,
+          composing: false,
+        },
+      }),
+    );
+
+    expect(snapshot.texts).toEqual([
+      {
+        id: 'text-1',
+        content: '第一条保持不变',
+        xRatio: 0.2,
+        yRatio: 0.25,
+        fontSize: 30,
+        color: '#E2E8F0',
+        align: 'left',
+        lineHeight: 1.6,
+      },
+      {
+        id: 'text-2',
+        content: '第二条最新文本',
+        xRatio: 0.72,
+        yRatio: 0.66,
+        fontSize: 44,
+        color: '#F97316',
+        align: 'right',
+        lineHeight: 1.8,
+      },
+    ]);
+    expect(snapshot.activeTextId).toBe('text-2');
+  });
+
+  it('legacy textOverlay 合并 active text 时不会覆盖 richer fields', () => {
+    const snapshot = captureHistorySnapshot(
+      createState({
+        textOverlay: {
+          text: '更新后的文本',
+          xRatio: 0.48,
+          yRatio: 0.52,
+          fontSize: 34,
+          color: '#0EA5E9',
+        },
+        texts: [
+          createText({
+            id: 'text-5',
+            content: '原始文本',
+            xRatio: 0.4,
+            yRatio: 0.45,
+            fontSize: 28,
+            color: '#F8FAFC',
+            align: 'right',
+            lineHeight: 1.9,
+          }),
+        ],
+        activeTextId: 'text-5',
+      }),
+    );
+
+    expect(snapshot.texts[0]).toEqual({
+      id: 'text-5',
+      content: '更新后的文本',
+      xRatio: 0.48,
+      yRatio: 0.52,
+      fontSize: 34,
+      color: '#0EA5E9',
+      align: 'right',
+      lineHeight: 1.9,
+    });
+  });
+
+  it('captureHistorySnapshot 会把无效的 activeTextId 和 textToolState 归一化', () => {
+    const snapshot = captureHistorySnapshot(
+      createState({
+        textOverlay: null,
+        texts: [createText({ id: 'text-9', content: '唯一文字' })],
+        activeTextId: 'missing-text',
+        textToolState: {
+          mode: 'editing',
+          textId: 'missing-text',
+          caretIndex: 7,
+          selectionStart: 2,
+          selectionEnd: 7,
+          composing: true,
+        },
+      }),
+    );
+
+    expect(snapshot.activeTextId).toBe('text-9');
+    expect(snapshot.textToolState).toEqual({
+      mode: 'idle',
+      hoverTextId: null,
+    });
   });
 
   it('pushHistorySnapshot 超过上限时丢弃最旧记录，且相同快照不重复压栈', () => {
@@ -133,14 +362,15 @@ describe('history snapshots', () => {
     const snapshot4 = captureHistorySnapshot(
       createState({
         cropRect: createRect(100, 100, 400, 300),
-        textOverlay: {
-          ...createDefaultTextOverlay(),
-          text: '新文字',
-          xRatio: 0.5,
-          yRatio: 0.8,
-          fontSize: 64,
-          color: '#FB7185',
-        },
+        texts: [
+          createText({
+            content: '新文字',
+            xRatio: 0.5,
+            yRatio: 0.8,
+            fontSize: 64,
+            color: '#FB7185',
+          }),
+        ],
       }),
     );
 
@@ -151,5 +381,70 @@ describe('history snapshots', () => {
     const deduped = pushHistorySnapshot(trimmed, snapshot4, 3);
 
     expect(deduped).toEqual(trimmed);
+  });
+
+  it('pushHistorySnapshot 不会把仅有激活项和工具态变化当成新的历史记录', () => {
+    const sharedImage = createImage('shared.png');
+
+    const snapshot1 = captureHistorySnapshot(
+      createState({
+        image: sharedImage,
+        textOverlay: null,
+        texts: [
+          createText({
+            id: 'text-1',
+            content: '第一条文本',
+            xRatio: 0.2,
+            yRatio: 0.25,
+          }),
+          createText({
+            id: 'text-2',
+            content: '第二条文本',
+            xRatio: 0.7,
+            yRatio: 0.3,
+            fontSize: 36,
+            color: '#38BDF8',
+          }),
+        ],
+        activeTextId: 'text-1',
+        textToolState: {
+          mode: 'idle',
+          hoverTextId: null,
+        },
+      }),
+    );
+    const snapshot2 = captureHistorySnapshot(
+      createState({
+        image: sharedImage,
+        textOverlay: null,
+        texts: [
+          createText({
+            id: 'text-1',
+            content: '第一条文本',
+            xRatio: 0.2,
+            yRatio: 0.25,
+          }),
+          createText({
+            id: 'text-2',
+            content: '第二条文本',
+            xRatio: 0.7,
+            yRatio: 0.3,
+            fontSize: 36,
+            color: '#38BDF8',
+          }),
+        ],
+        activeTextId: 'text-2',
+        textToolState: {
+          mode: 'editing',
+          textId: 'text-2',
+          caretIndex: 0,
+          selectionStart: 0,
+          selectionEnd: 0,
+          composing: false,
+        },
+      }),
+    );
+
+    expect(pushHistorySnapshot([snapshot1], snapshot2, 3)).toEqual([snapshot1]);
   });
 });
