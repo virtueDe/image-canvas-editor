@@ -1,6 +1,14 @@
 export { ImageCanvasEditor, createInitialEditorState } from './editor';
 export { createLocalDraftStore } from './persistence';
 export { PRESET_OPTIONS } from './presets';
+export {
+  isPointInTextBlock,
+  resolveDragHandleRect,
+  resolveTextLayout,
+  resolveTextScreenRect,
+  splitTextLines,
+} from './text-engine';
+export type { TextLayout, TextLayoutLine, TextMeasurement } from './text-engine';
 export type {
   CropViewMetrics,
   EditorAdjustments,
@@ -12,5 +20,6 @@ export type {
   PreviewViewMetrics,
   Rect,
   SerializableEditorState,
+  TextItem,
   TextOverlay,
 } from './types';
