@@ -9,9 +9,11 @@ import {
 
 type AdjustmentKey = 'contrast' | 'exposure' | 'highlights';
 type TextEditorBridge = ImageCanvasEditor & {
-  ensureTextOverlay: () => void;
+  startTextInsertion: () => void;
+  replaceActiveTextContent: (text: string, selectionStart?: number, selectionEnd?: number) => void;
+  updateActiveTextSelection: (selectionStart: number, selectionEnd: number) => void;
+  setActiveTextComposing: (composing: boolean) => void;
   removeTextOverlay: () => void;
-  updateTextOverlayText: (text: string) => void;
   updateTextOverlayFontSize: (fontSize: number) => void;
   updateTextOverlayColor: (color: string) => void;
 };
@@ -42,8 +44,15 @@ export const useImageEditor = () => {
 
   const renderState = computed(() => state.value);
   const hasImage = computed(() => Boolean(renderState.value.image));
-  const textOverlay = computed<EditorState['textOverlay']>(() => renderState.value.textOverlay);
-  const hasTextOverlay = computed(() => Boolean(textOverlay.value));
+  const texts = computed<NonNullable<EditorState['texts']>>(() => renderState.value.texts ?? []);
+  const activeText = computed(() =>
+    texts.value.find((item: NonNullable<EditorState['texts']>[number]) => item.id === renderState.value.activeTextId) ??
+    null,
+  );
+  const hasActiveText = computed(() => Boolean(activeText.value));
+  const isTextInserting = computed(() => renderState.value.textToolState.mode === 'inserting');
+  const isTextEditing = computed(() => renderState.value.textToolState.mode === 'editing');
+  const hiddenTextareaValue = computed(() => activeText.value?.content ?? '');
   const rotationText = computed(() => `${Math.round(renderState.value.transform.rotation)}°`);
   const zoomText = computed(() => `${Math.round(renderState.value.viewport.zoom * 100)}%`);
   const canApplyCrop = computed(
@@ -77,9 +86,9 @@ export const useImageEditor = () => {
 
     return `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
   });
-  const textOverlayLength = computed(() => textOverlay.value?.text.length ?? 0);
-  const textOverlayFontSize = computed(() => textOverlay.value?.fontSize ?? 48);
-  const textOverlayHint = computed(() => {
+  const activeTextLength = computed(() => activeText.value?.content.length ?? 0);
+  const activeTextFontSize = computed(() => activeText.value?.fontSize ?? 48);
+  const textHint = computed(() => {
     if (!hasImage.value) {
       return '先上传图片，再添加一段文字。';
     }
@@ -88,7 +97,19 @@ export const useImageEditor = () => {
       return '裁剪模式下暂不支持文字编辑。';
     }
 
-    return hasTextOverlay.value ? '已启用文字，可在画布中直接拖动定位。' : '先新增一段文字，再调整内容、字号和颜色。';
+    if (isTextInserting.value) {
+      return '点击画布中的落点创建一段新文字。';
+    }
+
+    if (isTextEditing.value) {
+      return '正在直接编辑文字，点击空白区域结束本次编辑。';
+    }
+
+    if (hasActiveText.value) {
+      return '当前对象已选中，可点击文字继续编辑，或拖拽手柄移动位置。';
+    }
+
+    return '点击左侧文字按钮进入插入态，再在画布中落点创建文字。';
   });
 
   const imageMetaRows = computed(() => {
@@ -97,9 +118,14 @@ export const useImageEditor = () => {
       ? '等待上传图片'
       : renderState.value.cropMode
         ? '正在裁剪'
-        : hasTextOverlay.value
-          ? '文字已启用'
-          : '可编辑';
+        : isTextEditing.value
+          ? '正在编辑文字'
+          : isTextInserting.value
+            ? '等待放置文字'
+            : hasActiveText.value
+              ? '文字已选中'
+              : '可编辑'
+          ;
 
     return [
       { label: '文件名', value: image?.name ?? '未加载' },
@@ -189,20 +215,55 @@ export const useImageEditor = () => {
   const commitRotation = (rotation: number): void => {
     getEditor().commitRotation(rotation);
   };
-  const ensureTextOverlay = (): void => {
-    getTextEditor().ensureTextOverlay();
+  const startTextInsertion = (): void => {
+    getTextEditor().startTextInsertion();
   };
   const removeTextOverlay = (): void => {
     getTextEditor().removeTextOverlay();
-  };
-  const updateTextOverlayText = (text: string): void => {
-    getTextEditor().updateTextOverlayText(text);
   };
   const updateTextOverlayFontSize = (fontSize: number): void => {
     getTextEditor().updateTextOverlayFontSize(fontSize);
   };
   const updateTextOverlayColor = (color: string): void => {
     getTextEditor().updateTextOverlayColor(color);
+  };
+  const replaceActiveTextContent = (
+    text: string,
+    selectionStart = text.length,
+    selectionEnd = selectionStart,
+  ): void => {
+    getTextEditor().replaceActiveTextContent(text, selectionStart, selectionEnd);
+  };
+  const updateActiveTextSelection = (selectionStart: number, selectionEnd: number): void => {
+    getTextEditor().updateActiveTextSelection(selectionStart, selectionEnd);
+  };
+  const setActiveTextComposing = (composing: boolean): void => {
+    getTextEditor().setActiveTextComposing(composing);
+  };
+  const readSelectionRange = (
+    target: HTMLTextAreaElement,
+  ): { selectionStart: number; selectionEnd: number } => ({
+    selectionStart: target.selectionStart ?? target.value.length,
+    selectionEnd: target.selectionEnd ?? target.selectionStart ?? target.value.length,
+  });
+  const onHiddenTextareaInput = (event: Event): void => {
+    const target = event.target as HTMLTextAreaElement;
+    const selection = readSelectionRange(target);
+
+    replaceActiveTextContent(target.value, selection.selectionStart, selection.selectionEnd);
+  };
+  const onHiddenTextareaSelectionChange = (event: Event): void => {
+    const target = event.target as HTMLTextAreaElement;
+    const selection = readSelectionRange(target);
+
+    updateActiveTextSelection(selection.selectionStart, selection.selectionEnd);
+  };
+  const onHiddenTextareaCompositionStart = (): void => {
+    setActiveTextComposing(true);
+  };
+  const onHiddenTextareaCompositionEnd = (event: CompositionEvent): void => {
+    setActiveTextComposing(false);
+    onHiddenTextareaInput(event as unknown as Event);
   };
 
   const undo = (): void => {
@@ -285,12 +346,16 @@ export const useImageEditor = () => {
     editorRef,
     state: renderState,
     hasImage,
-    textOverlay,
-    hasTextOverlay,
+    texts,
+    activeText,
+    hasActiveText,
+    isTextInserting,
+    isTextEditing,
+    hiddenTextareaValue,
     canEditText,
-    textOverlayHint,
-    textOverlayLength,
-    textOverlayFontSize,
+    textHint,
+    activeTextLength,
+    activeTextFontSize,
     rotationText,
     zoomText,
     canApplyCrop,
@@ -307,9 +372,13 @@ export const useImageEditor = () => {
     updateRotation,
     previewRotation,
     commitRotation,
-    ensureTextOverlay,
+    startTextInsertion,
     removeTextOverlay,
-    updateTextOverlayText,
+    replaceActiveTextContent,
+    onHiddenTextareaInput,
+    onHiddenTextareaSelectionChange,
+    onHiddenTextareaCompositionStart,
+    onHiddenTextareaCompositionEnd,
     updateTextOverlayFontSize,
     updateTextOverlayColor,
     updateAdjustment,

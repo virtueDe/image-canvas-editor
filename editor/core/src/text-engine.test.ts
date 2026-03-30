@@ -3,6 +3,8 @@ import { resolveTextOverlayLayout } from './text-overlay';
 import type { TextItem } from './types';
 import {
   isPointInTextBlock,
+  resolveTextCaretRect,
+  resolveTextCaretScreenRect,
   resolveDragHandleScreenRect,
   resolveTextLayout,
   resolveTextScreenRect,
@@ -28,6 +30,8 @@ const measureText = (text: string) => ({
       左对齐: 140,
       右对齐: 140,
       居中: 140,
+      第: 30,
+      第一: 60,
       ' ': 20,
     }[text] ?? 80,
   actualBoundingBoxAscent: 30,
@@ -69,6 +73,23 @@ describe('text engine layout', () => {
       height: 90,
     });
     expect(layout.lines[1]!.baselineY - layout.lines[0]!.baselineY).toBe(50);
+  });
+
+  it('keeps an empty editing line wide enough to click and edit', () => {
+    const emptyItem: TextItem = {
+      ...item,
+      content: '',
+    };
+    const layout = resolveTextLayout(emptyItem, 1200, 800, measureText);
+
+    expect(layout.width).toBe(80);
+    expect(layout.height).toBe(40);
+    expect(layout.bodyRect).toEqual({
+      x: 560,
+      y: 380,
+      width: 80,
+      height: 40,
+    });
   });
 
   it('keeps single-line legacy text visually aligned with text-overlay semantics', () => {
@@ -136,6 +157,26 @@ describe('text engine layout', () => {
     });
   });
 
+  it('resolves caret rects for empty and non-empty text editing states', () => {
+    const emptyItem: TextItem = {
+      ...item,
+      content: '',
+    };
+
+    expect(resolveTextCaretRect(emptyItem, 1200, 800, 0, measureText)).toEqual({
+      x: 560,
+      y: 380,
+      width: 2,
+      height: 40,
+    });
+    expect(resolveTextCaretRect({ ...item, content: '第一行' }, 1200, 800, 2, measureText)).toEqual({
+      x: 610,
+      y: 380,
+      width: 2,
+      height: 40,
+    });
+  });
+
   it('places the drag handle hit rect from screen body rect pixels', () => {
     const screenBodyRect = resolveTextScreenRect(
       item,
@@ -159,6 +200,24 @@ describe('text engine layout', () => {
       y: 166.5,
       width: 24,
       height: 24,
+    });
+  });
+
+  it('maps caret rect into screen space', () => {
+    const screenCaret = resolveTextCaretScreenRect(
+      { ...item, content: '' },
+      1200,
+      800,
+      { x: 50, y: 25, width: 600, height: 400 },
+      0,
+      measureText,
+    );
+
+    expect(screenCaret).toEqual({
+      x: 330,
+      y: 215,
+      width: 2,
+      height: 20,
     });
   });
 

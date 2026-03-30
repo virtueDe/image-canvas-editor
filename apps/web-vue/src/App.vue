@@ -4,6 +4,7 @@ import WorkbenchHeader from './components/WorkbenchHeader.vue';
 import WorkbenchIcon from './components/WorkbenchIcon.vue';
 import InspectorSection from './components/InspectorSection.vue';
 import { useImageEditor } from '@image-canvas-editor/editor-vue';
+import { syncHiddenTextProxyFocus } from './text-proxy-focus';
 
 const {
   PRESET_OPTIONS,
@@ -11,12 +12,15 @@ const {
   canvasRef,
   state,
   hasImage,
-  textOverlay,
-  hasTextOverlay,
+  activeText,
+  hasActiveText,
+  isTextInserting,
+  isTextEditing,
+  hiddenTextareaValue,
   canEditText,
-  textOverlayHint,
-  textOverlayLength,
-  textOverlayFontSize,
+  textHint,
+  activeTextLength,
+  activeTextFontSize,
   rotationText,
   zoomText,
   canApplyCrop,
@@ -32,9 +36,12 @@ const {
   toggleFlip,
   previewRotation,
   commitRotation,
-  ensureTextOverlay,
+  startTextInsertion,
   removeTextOverlay,
-  updateTextOverlayText,
+  onHiddenTextareaInput,
+  onHiddenTextareaSelectionChange,
+  onHiddenTextareaCompositionStart,
+  onHiddenTextareaCompositionEnd,
   updateTextOverlayFontSize,
   updateTextOverlayColor,
   previewAdjustment,
@@ -89,6 +96,8 @@ let previousBodyTop = '';
 let previousBodyLeft = '';
 let previousBodyRight = '';
 let previousBodyWidth = '';
+const hiddenTextInputRef = ref<HTMLTextAreaElement | null>(null);
+let hiddenTextInputSyncVersion = 0;
 
 const applyDocumentTheme = (nextTheme: WorkbenchTheme): void => {
   if (typeof document === 'undefined') {
@@ -118,14 +127,26 @@ const stageModeLabel = computed(() => {
     return '裁剪模式';
   }
 
-  return hasTextOverlay.value ? '文字模式' : '普通模式';
+  if (isTextInserting.value) {
+    return '文字插入';
+  }
+
+  if (isTextEditing.value) {
+    return '文字编辑';
+  }
+
+  return hasActiveText.value ? '文字已选中' : '普通模式';
 });
 const stageHint = computed(() =>
   isCropMode.value
     ? '裁剪模式：拖拽裁剪框，拖动内部移动，四角缩放。'
-    : hasTextOverlay.value
-      ? '文字模式：拖动画布中的文字可定位，拖动空白处继续移动画布。'
-      : '普通模式：拖拽移动画布，滚轮缩放，双击复位视图。',
+    : isTextInserting.value
+      ? '插入态：点击画布中的落点创建一段新文字。'
+      : isTextEditing.value
+        ? '编辑态：直接输入文字，点击空白区域结束本次编辑。'
+        : hasActiveText.value
+          ? '文字已选中：点击文字继续编辑，拖动右上手柄移动位置。'
+          : '普通模式：拖拽移动画布，滚轮缩放，双击复位视图。',
 );
 const isMobileInspectorModal = computed(() => !isDesktopViewport.value && isInspectorOpen.value);
 const shouldScrollInspectorContent = computed(() => isMobileInspectorModal.value || isFixedWorkbenchViewport.value);
@@ -187,6 +208,27 @@ const unlockDocumentScroll = (): void => {
 const setSectionOpen = (section: SectionId, nextOpen: boolean): void => {
   sectionOpen[section] = nextOpen;
 };
+const syncHiddenTextInput = async (): Promise<void> => {
+  const input = hiddenTextInputRef.value;
+  const textToolState = state.value.textToolState;
+  const syncVersion = ++hiddenTextInputSyncVersion;
+
+  if (!input) {
+    return;
+  }
+
+  await nextTick();
+
+  if (syncVersion !== hiddenTextInputSyncVersion || hiddenTextInputRef.value !== input) {
+    return;
+  }
+
+  await syncHiddenTextProxyFocus(input, textToolState);
+
+  if (syncVersion !== hiddenTextInputSyncVersion || hiddenTextInputRef.value !== input) {
+    return;
+  }
+};
 
 watch(
   () => state.value.cropMode,
@@ -197,13 +239,25 @@ watch(
   },
 );
 watch(
-  () => state.value.textOverlay,
+  () => state.value.activeTextId,
   (next) => {
     if (next) {
       sectionOpen.text = true;
     }
   },
 );
+watch(
+  () => state.value.textToolState,
+  () => {
+    void syncHiddenTextInput();
+  },
+  { deep: true },
+);
+watch(hiddenTextareaValue, () => {
+  if (state.value.textToolState.mode === 'editing') {
+    void syncHiddenTextInput();
+  }
+});
 watch(isDesktopViewport, (next) => {
   if (next) {
     closeInspector();
@@ -352,7 +406,7 @@ onBeforeUnmount(() => {
                 <button class="dock-tool-btn dock-tool-btn--primary" type="button" :disabled="!hasImage || isCropMode" title="裁剪" aria-label="裁剪" @click="enterCropMode">
                   <WorkbenchIcon name="crop" :size="18" />
                 </button>
-                <button class="dock-tool-btn" type="button" :disabled="!canEditText" title="文字" aria-label="文字" @click="ensureTextOverlay">
+                <button class="dock-tool-btn" :class="{ 'dock-tool-btn--primary': isTextInserting || isTextEditing }" type="button" :disabled="!canEditText" title="文字" aria-label="文字" @click="startTextInsertion">
                   <WorkbenchIcon name="text" :size="18" />
                 </button>
               </div>
@@ -464,45 +518,45 @@ onBeforeUnmount(() => {
                   </div>
                   <p class="mt-3 text-xs leading-5 text-[color:var(--studio-ink-dim)]">裁剪坐标始终基于原图。这样后面再旋转、翻转，状态也不会乱。</p>
                 </InspectorSection>
-                <InspectorSection title="文字" :hint="textOverlayHint" :tone="hasTextOverlay && !isCropMode ? 'accent' : 'muted'" :open="sectionOpen.text" @toggle="(next) => setSectionOpen('text', next)">
+                <InspectorSection title="文字" :hint="textHint" :tone="(hasActiveText || isTextInserting || isTextEditing) && !isCropMode ? 'accent' : 'muted'" :open="sectionOpen.text" @toggle="(next) => setSectionOpen('text', next)">
                   <div class="text-tool-stack space-y-4">
                     <div class="grid grid-cols-2 gap-2">
-                      <button class="btn-primary workbench-icon-btn w-full justify-start" type="button" :disabled="!canEditText" @click="ensureTextOverlay">
+                      <button class="btn-primary workbench-icon-btn w-full justify-start" type="button" :disabled="!canEditText" @click="startTextInsertion">
                         <WorkbenchIcon name="text" :size="16" />
-                        <span>{{ hasTextOverlay ? '聚焦文字' : '添加文字' }}</span>
+                        <span>{{ isTextInserting ? '等待落点' : '新增文字' }}</span>
                       </button>
-                      <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!hasTextOverlay || !canEditText" @click="removeTextOverlay">
+                      <button class="btn-soft workbench-icon-btn w-full justify-start" type="button" :disabled="!hasActiveText || !canEditText" @click="removeTextOverlay">
                         <WorkbenchIcon name="text-remove" :size="16" />
                         <span>删除文字</span>
                       </button>
                     </div>
                     <label class="block text-sm text-[color:var(--studio-ink-muted)]">
                       <span class="mb-2 flex items-center justify-between">
-                        <span>文字内容</span>
-                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ textOverlayLength }}/24</span>
+                        <span>当前内容</span>
+                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ activeTextLength }} 字</span>
                       </span>
-                      <input class="text-tool-input w-full" type="text" maxlength="24" placeholder="输入一句简短文案" :disabled="!hasTextOverlay || !canEditText" :value="textOverlay?.text ?? ''" @input="updateTextOverlayText(($event.target as HTMLInputElement).value)" />
+                      <textarea class="text-tool-input text-tool-textarea w-full" rows="3" readonly :placeholder="hasActiveText ? '点击画布中的文字继续编辑' : '先进入插入态并在画布中创建文字'" :value="activeText?.content ?? ''" />
                     </label>
                     <label class="block text-sm text-[color:var(--studio-ink-muted)]">
                       <span class="mb-2 flex items-center justify-between">
                         <span>字号</span>
-                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ textOverlayFontSize }} px</span>
+                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ activeTextFontSize }} px</span>
                       </span>
-                      <input class="input-range" type="range" min="16" max="96" step="1" :disabled="!hasTextOverlay || !canEditText" :value="textOverlayFontSize" @input="updateTextOverlayFontSize(getRangeValue($event))" />
+                      <input class="input-range" type="range" min="16" max="96" step="1" :disabled="!hasActiveText || !canEditText" :value="activeTextFontSize" @input="updateTextOverlayFontSize(getRangeValue($event))" />
                     </label>
                     <div>
                       <div class="mb-2 flex items-center justify-between text-sm text-[color:var(--studio-ink-muted)]">
                         <span>颜色</span>
-                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ hasTextOverlay ? '点击切换预设色' : '先创建文字' }}</span>
+                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ hasActiveText ? '点击切换预设色' : '先创建文字' }}</span>
                       </div>
                       <div class="text-color-grid grid grid-cols-3 gap-2">
-                        <button v-for="item in TEXT_PRESET_COLORS" :key="item.value" class="text-color-chip" :class="{ 'is-active': textOverlay?.color === item.value }" type="button" :disabled="!hasTextOverlay || !canEditText" :aria-label="`文字颜色：${item.label}`" @click="updateTextOverlayColor(item.value)">
+                        <button v-for="item in TEXT_PRESET_COLORS" :key="item.value" class="text-color-chip" :class="{ 'is-active': activeText?.color === item.value }" type="button" :disabled="!hasActiveText || !canEditText" :aria-label="`文字颜色：${item.label}`" @click="updateTextOverlayColor(item.value)">
                           <span class="text-color-chip__swatch" :style="{ backgroundColor: item.value }" />
                           <span class="text-color-chip__label">{{ item.label }}</span>
                         </button>
                       </div>
                     </div>
-                    <p class="text-helper text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasTextOverlay ? '文字会参与撤销、重做和 PNG 导出。' : '新增后可直接在画布中拖动文字定位。' }}</p>
+                    <p class="text-helper text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasActiveText ? '当前选中文字会参与撤销、重做和 PNG 导出。' : '新增后可点击文字直接编辑，拖拽手柄移动位置。' }}</p>
                   </div>
                 </InspectorSection>
                 <InspectorSection title="滤镜预设" hint="先预设，再微调" :open="sectionOpen.preset" @toggle="(next) => setSectionOpen('preset', next)">
@@ -599,7 +653,20 @@ onBeforeUnmount(() => {
                 :disabled="isCropMode"
                 @change="onFileChange"
               />
-              <div class="editor-stage absolute inset-4 md:inset-5">
+              <div class="editor-stage absolute inset-4 md:inset-5" :class="{ 'is-text-inserting': isTextInserting, 'is-text-editing': isTextEditing }">
+                <textarea
+                  ref="hiddenTextInputRef"
+                  class="canvas-text-proxy"
+                  :value="hiddenTextareaValue"
+                  :disabled="!isTextEditing"
+                  tabindex="-1"
+                  @input="onHiddenTextareaInput"
+                  @click="onHiddenTextareaSelectionChange"
+                  @keyup="onHiddenTextareaSelectionChange"
+                  @select="onHiddenTextareaSelectionChange"
+                  @compositionstart="onHiddenTextareaCompositionStart"
+                  @compositionend="onHiddenTextareaCompositionEnd"
+                />
                 <canvas ref="canvasRef" class="block h-full w-full select-none rounded-[22px]" />
               </div>
               <div

@@ -1,4 +1,5 @@
 import type { Rect, TextItem } from './types';
+import { clamp } from './utils';
 
 export interface TextMeasurement {
   width: number;
@@ -24,6 +25,14 @@ export interface TextLayout {
 const FONT_FAMILY = '"Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
 const DRAG_HANDLE_SIZE = 24;
 const DRAG_HANDLE_GAP = 12;
+const EMPTY_LINE_MIN_WIDTH_FACTOR = 2;
+
+type MeasuredTextLine = {
+  text: string;
+  width: number;
+  ascent: number;
+  descent: number;
+};
 
 const fallbackMeasureText = (text: string, fontSize: number): TextMeasurement => ({
   width: Math.max(fontSize * 0.6, text.length * fontSize * 0.6),
@@ -69,27 +78,72 @@ const normalizeLineBreaks = (content: string): string => content.replace(/\r\n?/
 
 export const splitTextLines = (content: string): string[] => normalizeLineBreaks(content).split('\n');
 
+const measureLayoutLines = (
+  item: TextItem,
+  measureText: (text: string, fontSize: number) => TextMeasurement,
+): MeasuredTextLine[] =>
+  splitTextLines(item.content).map((text) => {
+    const renderText = text || ' ';
+    const metrics = measureText(renderText, item.fontSize);
+    const minWidth = text.length === 0 ? item.fontSize * EMPTY_LINE_MIN_WIDTH_FACTOR : 0;
+
+    return {
+      text,
+      width: Math.max(minWidth, metrics.width),
+      ascent: metrics.actualBoundingBoxAscent ?? item.fontSize * 0.78,
+      descent: metrics.actualBoundingBoxDescent ?? item.fontSize * 0.22,
+    };
+  });
+
+const resolveLineBodyX = (item: TextItem, lineWidth: number, anchorX: number): number =>
+  resolveBodyX(item.align, anchorX, lineWidth);
+
+const resolveCaretLinePosition = (
+  content: string,
+  caretIndex: number,
+): {
+  lineIndex: number;
+  columnIndex: number;
+} => {
+  const normalized = normalizeLineBreaks(content);
+  const lines = splitTextLines(normalized);
+  let remaining = clamp(caretIndex, 0, normalized.length);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+
+    if (remaining <= line.length) {
+      return {
+        lineIndex: index,
+        columnIndex: remaining,
+      };
+    }
+
+    remaining -= line.length;
+
+    if (index < lines.length - 1) {
+      remaining -= 1;
+    }
+  }
+
+  const lastLine = lines[lines.length - 1] ?? '';
+
+  return {
+    lineIndex: Math.max(0, lines.length - 1),
+    columnIndex: lastLine.length,
+  };
+};
+
 export const resolveTextLayout = (
   item: TextItem,
   canvasWidth: number,
   canvasHeight: number,
   measureText: (text: string, fontSize: number) => TextMeasurement = defaultMeasureText,
 ): TextLayout => {
-  const lines = splitTextLines(item.content);
   const lineAdvance = item.fontSize * item.lineHeight;
   const anchorX = item.xRatio * canvasWidth;
   const anchorY = item.yRatio * canvasHeight;
-  const measuredLines = lines.map((text) => {
-    const renderText = text || ' ';
-    const metrics = measureText(renderText, item.fontSize);
-
-    return {
-      text,
-      width: metrics.width,
-      ascent: metrics.actualBoundingBoxAscent ?? item.fontSize * 0.78,
-      descent: metrics.actualBoundingBoxDescent ?? item.fontSize * 0.22,
-    };
-  });
+  const measuredLines = measureLayoutLines(item, measureText);
   const width = Math.max(item.fontSize * 0.5, ...measuredLines.map((line) => line.width));
   const firstLine = measuredLines[0]!;
   const lastLine = measuredLines[measuredLines.length - 1]!;
@@ -120,6 +174,30 @@ export const resolveTextLayout = (
   };
 };
 
+export const resolveTextCaretRect = (
+  item: TextItem,
+  canvasWidth: number,
+  canvasHeight: number,
+  caretIndex: number,
+  measureText: (text: string, fontSize: number) => TextMeasurement = defaultMeasureText,
+): Rect => {
+  const layout = resolveTextLayout(item, canvasWidth, canvasHeight, measureText);
+  const measuredLines = measureLayoutLines(item, measureText);
+  const { lineIndex, columnIndex } = resolveCaretLinePosition(item.content, caretIndex);
+  const line = measuredLines[lineIndex] ?? measuredLines[measuredLines.length - 1]!;
+  const layoutLine = layout.lines[lineIndex] ?? layout.lines[layout.lines.length - 1]!;
+  const prefix = line.text.slice(0, columnIndex);
+  const prefixWidth = prefix.length > 0 ? measureText(prefix, item.fontSize).width : 0;
+  const lineX = resolveLineBodyX(item, line.width, layout.anchorX);
+
+  return {
+    x: lineX + prefixWidth,
+    y: layoutLine.baselineY - line.ascent,
+    width: 2,
+    height: line.ascent + line.descent,
+  };
+};
+
 export const resolveTextScreenRect = (
   item: TextItem,
   sourceWidth: number,
@@ -140,6 +218,30 @@ export const resolveTextScreenRect = (
     y: displayRect.y + layout.bodyRect.y * scaleY,
     width: layout.bodyRect.width * scaleX,
     height: layout.bodyRect.height * scaleY,
+  };
+};
+
+export const resolveTextCaretScreenRect = (
+  item: TextItem,
+  sourceWidth: number,
+  sourceHeight: number,
+  displayRect: Pick<Rect, 'x' | 'y' | 'width' | 'height'>,
+  caretIndex: number,
+  measureText: (text: string, fontSize: number) => TextMeasurement = defaultMeasureText,
+): Rect | null => {
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return null;
+  }
+
+  const caretRect = resolveTextCaretRect(item, sourceWidth, sourceHeight, caretIndex, measureText);
+  const scaleX = displayRect.width / sourceWidth;
+  const scaleY = displayRect.height / sourceHeight;
+
+  return {
+    x: displayRect.x + caretRect.x * scaleX,
+    y: displayRect.y + caretRect.y * scaleY,
+    width: Math.max(2, caretRect.width * scaleX),
+    height: caretRect.height * scaleY,
   };
 };
 

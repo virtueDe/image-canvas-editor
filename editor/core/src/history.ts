@@ -2,7 +2,6 @@ import {
   cloneTextToolState,
   normalizeTextState,
   textItemToTextOverlay,
-  textToolStatesEqual,
   type EditorState,
   type ImageResource,
   type Rect,
@@ -101,8 +100,6 @@ export const snapshotsEqual = (left: HistorySnapshot, right: HistorySnapshot): b
     imageEqual &&
     cropRectEqual &&
     textsEqual &&
-    left.activeTextId === right.activeTextId &&
-    textToolStatesEqual(left.textToolState, right.textToolState) &&
     left.adjustments.contrast === right.adjustments.contrast &&
     left.adjustments.exposure === right.adjustments.exposure &&
     left.adjustments.highlights === right.adjustments.highlights &&

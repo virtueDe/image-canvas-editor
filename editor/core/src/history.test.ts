@@ -382,4 +382,69 @@ describe('history snapshots', () => {
 
     expect(deduped).toEqual(trimmed);
   });
+
+  it('pushHistorySnapshot 不会把仅有激活项和工具态变化当成新的历史记录', () => {
+    const sharedImage = createImage('shared.png');
+
+    const snapshot1 = captureHistorySnapshot(
+      createState({
+        image: sharedImage,
+        textOverlay: null,
+        texts: [
+          createText({
+            id: 'text-1',
+            content: '第一条文本',
+            xRatio: 0.2,
+            yRatio: 0.25,
+          }),
+          createText({
+            id: 'text-2',
+            content: '第二条文本',
+            xRatio: 0.7,
+            yRatio: 0.3,
+            fontSize: 36,
+            color: '#38BDF8',
+          }),
+        ],
+        activeTextId: 'text-1',
+        textToolState: {
+          mode: 'idle',
+          hoverTextId: null,
+        },
+      }),
+    );
+    const snapshot2 = captureHistorySnapshot(
+      createState({
+        image: sharedImage,
+        textOverlay: null,
+        texts: [
+          createText({
+            id: 'text-1',
+            content: '第一条文本',
+            xRatio: 0.2,
+            yRatio: 0.25,
+          }),
+          createText({
+            id: 'text-2',
+            content: '第二条文本',
+            xRatio: 0.7,
+            yRatio: 0.3,
+            fontSize: 36,
+            color: '#38BDF8',
+          }),
+        ],
+        activeTextId: 'text-2',
+        textToolState: {
+          mode: 'editing',
+          textId: 'text-2',
+          caretIndex: 0,
+          selectionStart: 0,
+          selectionEnd: 0,
+          composing: false,
+        },
+      }),
+    );
+
+    expect(pushHistorySnapshot([snapshot1], snapshot2, 3)).toEqual([snapshot1]);
+  });
 });
