@@ -6,7 +6,7 @@
 |Config:./:{package.json,pnpm-workspace.yaml,tsconfig.base.json,README.md}|Output:dist/
 |Layers:web-vue=UI shell|editor-vue=Vue bridge|editor-core=editor state+render+persistence
 |Boundaries:browser UI/file input/alert only in apps/web-vue|reactive bridge only in editor/vue3|Canvas logic/state/draft/export only in editor/core
-|Change Rules:small reversible patches|do not edit dist directly|do not add abstractions/state libs without a current pain point
+|Change Rules:small reversible patches|product-grade complete flows over demo-only slices|do not edit dist directly|do not add abstractions/state libs without a current pain point
 |Dev:pnpm install|pnpm dev|pnpm build|pnpm preview|pnpm typecheck
 |Tests:prefer editor/core/src/*.test.ts for new unit tests; keep UI-free where possible
 |Commits:Conventional Commits type(scope): summary|Scopes:{editor-core,editor-vue,web-vue}
