@@ -63,6 +63,39 @@ describe('multi-text editor workflow', () => {
     });
   });
 
+  it('keeps the first typed character on the original empty caret position', () => {
+    const editor = new ImageCanvasEditor();
+    const editorInternals = editor as unknown as {
+      renderer: {
+        render: () => void;
+        getPreviewViewMetrics: () => {
+          sourceWidth: number;
+          sourceHeight: number;
+        };
+      };
+    };
+
+    editorInternals.renderer = {
+      render: () => undefined,
+      getPreviewViewMetrics: () => ({
+        sourceWidth: 1200,
+        sourceHeight: 800,
+      }),
+    };
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.4, 0.5);
+
+    const before = editor.getState().texts[0]!;
+    editor.replaceActiveTextContent('第', 1, 1);
+    const after = editor.getState().texts[0]!;
+
+    expect(before.align).toBe('center');
+    expect(before.xRatio).toBe(0.4);
+    expect(after.xRatio).toBeCloseTo(0.372, 6);
+    expect(after.content).toBe('第');
+  });
+
   it('keeps drag and edit as separate history sessions', () => {
     const editor = new ImageCanvasEditor();
 

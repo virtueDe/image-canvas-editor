@@ -203,6 +203,32 @@ export const resolveTextCaretRect = (
   };
 };
 
+export const resolveEmptyTextAnchorCompensation = (
+  item: TextItem,
+  nextContent: string,
+  canvasWidth: number,
+  canvasHeight: number,
+  measureText: (text: string, fontSize: number) => TextMeasurement = defaultMeasureText,
+): number => {
+  if (item.content.length !== 0 || nextContent.length === 0) {
+    return 0;
+  }
+
+  const currentCaretRect = resolveTextCaretRect(item, canvasWidth, canvasHeight, 0, measureText);
+  const nextCaretRect = resolveTextCaretRect(
+    {
+      ...item,
+      content: nextContent,
+    },
+    canvasWidth,
+    canvasHeight,
+    0,
+    measureText,
+  );
+
+  return currentCaretRect.x - nextCaretRect.x;
+};
+
 export const resolveTextScreenRect = (
   item: TextItem,
   sourceWidth: number,

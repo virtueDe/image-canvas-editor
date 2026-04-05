@@ -24,6 +24,7 @@ import {
 } from './types';
 import {
   isPointInTextBlock,
+  resolveEmptyTextAnchorCompensation,
   resolveDragHandleScreenRect,
   resolveTextScreenRect,
 } from './text-engine';
@@ -801,10 +802,11 @@ export class ImageCanvasEditor {
       const nextContent =
         activeText.content.slice(0, selectionStart) + text + activeText.content.slice(selectionEnd);
       const nextCaretIndex = selectionStart + text.length;
+      const nextActiveText = this.stabilizeEmptyTextAnchor(activeText, nextContent);
       const nextTexts = currentTextState.texts.map((item) =>
         item.id === activeText.id
           ? {
-              ...item,
+              ...nextActiveText,
               content: nextContent,
             }
           : item,
@@ -845,10 +847,12 @@ export class ImageCanvasEditor {
         return currentState;
       }
 
+      const nextActiveText = this.stabilizeEmptyTextAnchor(activeText, content);
+
       const nextTexts = currentTextState.texts.map((item) =>
         item.id === activeText.id
           ? {
-              ...item,
+              ...nextActiveText,
               content,
             }
           : item,
@@ -1548,6 +1552,27 @@ export class ImageCanvasEditor {
       texts: normalizedTextState.texts,
       activeTextId: normalizedTextState.activeTextId,
       textToolState: normalizedTextState.textToolState,
+    };
+  }
+
+  private stabilizeEmptyTextAnchor(text: TextItem, nextContent: string): TextItem {
+    const previewMetrics = this.renderer?.getPreviewViewMetrics() ?? null;
+    const sourceWidth = previewMetrics?.sourceWidth ?? this.store.getState().image?.width ?? 0;
+    const sourceHeight = previewMetrics?.sourceHeight ?? this.store.getState().image?.height ?? 0;
+
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      return text;
+    }
+
+    const deltaX = resolveEmptyTextAnchorCompensation(text, nextContent, sourceWidth, sourceHeight);
+
+    if (deltaX === 0) {
+      return text;
+    }
+
+    return {
+      ...text,
+      xRatio: clamp(text.xRatio + deltaX / sourceWidth, 0, 1),
     };
   }
 

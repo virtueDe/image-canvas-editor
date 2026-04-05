@@ -3,6 +3,7 @@ import { resolveTextOverlayLayout } from './text-overlay';
 import type { TextItem } from './types';
 import {
   isPointInTextBlock,
+  resolveEmptyTextAnchorCompensation,
   resolveTextCaretRect,
   resolveTextCaretScreenRect,
   resolveDragHandleScreenRect,
@@ -247,6 +248,19 @@ describe('text engine layout', () => {
       width: 2,
       height: 20,
     });
+  });
+
+  it('computes anchor compensation so the first character stays on the empty caret x', () => {
+    const createEmptyAlignedItem = (align: TextItem['align']): TextItem => ({
+      ...item,
+      content: '',
+      xRatio: 0.25,
+      align,
+    });
+
+    expect(resolveEmptyTextAnchorCompensation(createEmptyAlignedItem('left'), '第', 1200, 800, measureText)).toBe(0);
+    expect(resolveEmptyTextAnchorCompensation(createEmptyAlignedItem('center'), '第', 1200, 800, measureText)).toBe(-25);
+    expect(resolveEmptyTextAnchorCompensation(createEmptyAlignedItem('right'), '第', 1200, 800, measureText)).toBe(-50);
   });
 
   it('treats only the body rect as editable hit area', () => {
