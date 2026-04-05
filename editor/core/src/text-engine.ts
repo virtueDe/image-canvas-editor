@@ -34,6 +34,11 @@ type MeasuredTextLine = {
   descent: number;
 };
 
+const resolveTextMetric = (
+  metric: number | undefined,
+  fallback: number,
+): number => (metric !== undefined && metric > 0 ? metric : fallback);
+
 const fallbackMeasureText = (text: string, fontSize: number): TextMeasurement => ({
   width: Math.max(fontSize * 0.6, text.length * fontSize * 0.6),
   actualBoundingBoxAscent: fontSize * 0.78,
@@ -90,8 +95,8 @@ const measureLayoutLines = (
     return {
       text,
       width: Math.max(minWidth, metrics.width),
-      ascent: metrics.actualBoundingBoxAscent ?? item.fontSize * 0.78,
-      descent: metrics.actualBoundingBoxDescent ?? item.fontSize * 0.22,
+      ascent: resolveTextMetric(metrics.actualBoundingBoxAscent, item.fontSize * 0.78),
+      descent: resolveTextMetric(metrics.actualBoundingBoxDescent, item.fontSize * 0.22),
     };
   });
 

@@ -35,6 +35,11 @@ const MAX_FONT_SIZE = 96;
 const DEFAULT_FONT_SIZE = 48;
 const DEFAULT_PADDING = 10;
 
+const resolveTextMetric = (
+  metric: number | undefined,
+  fallback: number,
+): number => (metric !== undefined && metric > 0 ? metric : fallback);
+
 const fallbackMeasureText = (text: string, fontSize: number): TextMeasurement => ({
   width: Math.max(fontSize * 0.6, text.length * fontSize * 0.6),
   actualBoundingBoxAscent: fontSize * 0.78,
@@ -89,8 +94,8 @@ export const resolveTextOverlayLayout = (
   const renderText = normalized.text.trim() || ' ';
   const measurement = measureText(renderText, normalized.fontSize);
   const width = Math.max(measurement.width, normalized.fontSize * 0.5);
-  const ascent = measurement.actualBoundingBoxAscent ?? normalized.fontSize * 0.78;
-  const descent = measurement.actualBoundingBoxDescent ?? normalized.fontSize * 0.22;
+  const ascent = resolveTextMetric(measurement.actualBoundingBoxAscent, normalized.fontSize * 0.78);
+  const descent = resolveTextMetric(measurement.actualBoundingBoxDescent, normalized.fontSize * 0.22);
   const height = ascent + descent;
   const anchorX = normalized.xRatio * canvasWidth;
   const anchorY = normalized.yRatio * canvasHeight;

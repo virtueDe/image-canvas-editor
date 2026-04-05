@@ -92,6 +92,34 @@ describe('text engine layout', () => {
     });
   });
 
+  it('falls back to font-size metrics when blank line bounding boxes collapse to zero', () => {
+    const emptyItem: TextItem = {
+      ...item,
+      content: '',
+    };
+    const zeroMetrics = () => ({
+      width: 12,
+      actualBoundingBoxAscent: 0,
+      actualBoundingBoxDescent: 0,
+    });
+    const layout = resolveTextLayout(emptyItem, 1200, 800, zeroMetrics);
+
+    expect(layout.width).toBe(80);
+    expect(layout.height).toBe(40);
+    expect(layout.bodyRect).toEqual({
+      x: 560,
+      y: 380,
+      width: 80,
+      height: 40,
+    });
+    expect(resolveTextCaretRect(emptyItem, 1200, 800, 0, zeroMetrics)).toEqual({
+      x: 560,
+      y: 380,
+      width: 2,
+      height: 40,
+    });
+  });
+
   it('keeps single-line legacy text visually aligned with text-overlay semantics', () => {
     const legacyItem: TextItem = {
       ...item,
