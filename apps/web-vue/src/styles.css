@@ -495,13 +495,6 @@ button:disabled {
   box-shadow: 0 0 0 3px var(--studio-accent-ring);
 }
 
-.text-tool-textarea {
-  min-height: 92px;
-  line-height: 1.6;
-  resize: vertical;
-  white-space: pre-wrap;
-}
-
 .text-color-grid,
 .preset-grid {
   grid-auto-rows: 1fr;

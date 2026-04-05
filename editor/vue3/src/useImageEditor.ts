@@ -86,7 +86,6 @@ export const useImageEditor = () => {
 
     return `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
   });
-  const activeTextLength = computed(() => activeText.value?.content.length ?? 0);
   const activeTextFontSize = computed(() => activeText.value?.fontSize ?? 48);
   const textHint = computed(() => {
     if (!hasImage.value) {
@@ -354,7 +353,6 @@ export const useImageEditor = () => {
     hiddenTextareaValue,
     canEditText,
     textHint,
-    activeTextLength,
     activeTextFontSize,
     rotationText,
     zoomText,

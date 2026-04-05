@@ -19,7 +19,6 @@ const {
   hiddenTextareaValue,
   canEditText,
   textHint,
-  activeTextLength,
   activeTextFontSize,
   rotationText,
   zoomText,
@@ -98,6 +97,8 @@ let previousBodyRight = '';
 let previousBodyWidth = '';
 const hiddenTextInputRef = ref<HTMLTextAreaElement | null>(null);
 let hiddenTextInputSyncVersion = 0;
+const TEXT_FONT_SIZE_MIN = 12;
+const TEXT_FONT_SIZE_MAX = 180;
 
 const applyDocumentTheme = (nextTheme: WorkbenchTheme): void => {
   if (typeof document === 'undefined') {
@@ -229,6 +230,17 @@ const syncHiddenTextInput = async (): Promise<void> => {
     return;
   }
 };
+const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
+const clampTextFontSize = (value: number): number =>
+  Math.min(TEXT_FONT_SIZE_MAX, Math.max(TEXT_FONT_SIZE_MIN, Math.round(value)));
+const handleTextFontSizeChange = (nextValue: number): void => {
+  if (!hasActiveText.value || !canEditText.value || Number.isNaN(nextValue)) {
+    return;
+  }
+
+  const normalized = clampTextFontSize(nextValue);
+  updateTextOverlayFontSize(normalized);
+};
 
 watch(
   () => state.value.cropMode,
@@ -280,8 +292,6 @@ watch(isMobileInspectorModal, async (next) => {
   }
   shouldRestoreInspectorFocus = false;
 });
-
-const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
 const toggleTheme = (): void => {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
 };
@@ -532,17 +542,10 @@ onBeforeUnmount(() => {
                     </div>
                     <label class="block text-sm text-[color:var(--studio-ink-muted)]">
                       <span class="mb-2 flex items-center justify-between">
-                        <span>当前内容</span>
-                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ activeTextLength }} 字</span>
-                      </span>
-                      <textarea class="text-tool-input text-tool-textarea w-full" rows="3" readonly :placeholder="hasActiveText ? '点击画布中的文字继续编辑' : '先进入插入态并在画布中创建文字'" :value="activeText?.content ?? ''" />
-                    </label>
-                    <label class="block text-sm text-[color:var(--studio-ink-muted)]">
-                      <span class="mb-2 flex items-center justify-between">
                         <span>字号</span>
                         <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ activeTextFontSize }} px</span>
                       </span>
-                      <input class="input-range" type="range" min="16" max="96" step="1" :disabled="!hasActiveText || !canEditText" :value="activeTextFontSize" @input="updateTextOverlayFontSize(getRangeValue($event))" />
+                      <input class="input-range" type="range" :min="TEXT_FONT_SIZE_MIN" :max="TEXT_FONT_SIZE_MAX" step="1" :disabled="!hasActiveText || !canEditText" :value="activeTextFontSize" @input="handleTextFontSizeChange(getRangeValue($event))" />
                     </label>
                     <div>
                       <div class="mb-2 flex items-center justify-between text-sm text-[color:var(--studio-ink-muted)]">

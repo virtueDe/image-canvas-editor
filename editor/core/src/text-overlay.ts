@@ -30,8 +30,8 @@ export interface TextOverlayDrawConfig {
 const FONT_FAMILY = '"Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
 const DEFAULT_TEXT = '输入文字';
 const DEFAULT_COLOR = '#F5EFE7';
-const MIN_FONT_SIZE = 16;
-const MAX_FONT_SIZE = 96;
+const MIN_FONT_SIZE = 12;
+const MAX_FONT_SIZE = 180;
 const DEFAULT_FONT_SIZE = 48;
 const DEFAULT_PADDING = 10;
 

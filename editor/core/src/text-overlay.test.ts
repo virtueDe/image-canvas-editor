@@ -15,7 +15,7 @@ describe('text overlay helpers', () => {
       text: '测试',
       xRatio: -0.2,
       yRatio: 1.4,
-      fontSize: 140,
+      fontSize: 220,
       color: '#fff',
     });
 
@@ -23,7 +23,7 @@ describe('text overlay helpers', () => {
       text: '测试',
       xRatio: 0,
       yRatio: 1,
-      fontSize: 96,
+      fontSize: 180,
       color: '#fff',
     });
   });
