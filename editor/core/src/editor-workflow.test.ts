@@ -130,6 +130,37 @@ describe('multi-text editor workflow', () => {
     });
   });
 
+  it('updates active text rotation', () => {
+    const editor = new ImageCanvasEditor();
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.5, 0.5);
+    editor.insertText('标题');
+    editor.finishTextEditing();
+    editor.updateActiveTextRotation(30);
+
+    expect(editor.getState().texts[0]?.rotation).toBe(30);
+  });
+
+  it('keeps one undo session for a single text rotation update', () => {
+    const editor = new ImageCanvasEditor();
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.5, 0.5);
+    editor.insertText('标题');
+    editor.finishTextEditing();
+    editor.updateActiveTextRotation(30);
+
+    editor.undo();
+    expect(editor.getState().texts[0]).toMatchObject({
+      content: '标题',
+      rotation: 0,
+    });
+
+    editor.undo();
+    expect(editor.getState().texts).toHaveLength(0);
+  });
+
   it('deletes an empty text when editing finishes', () => {
     const editor = new ImageCanvasEditor();
 

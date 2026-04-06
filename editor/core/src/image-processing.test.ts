@@ -10,6 +10,11 @@ type MockContext = {
     textAlign: string;
     fillStyle: string;
   }>;
+  translateCalls: Array<{
+    x: number;
+    y: number;
+  }>;
+  rotateCalls: number[];
 };
 
 type MockCanvasDocument = {
@@ -62,9 +67,13 @@ const createMockCanvasDocument = (context: MockContext): MockCanvasDocument => (
       putImageData: () => undefined,
       save: () => undefined,
       restore: () => undefined,
-      translate: () => undefined,
+      translate: (x: number, y: number) => {
+        context.translateCalls.push({ x, y });
+      },
       scale: () => undefined,
-      rotate: () => undefined,
+      rotate: (angle: number) => {
+        context.rotateCalls.push(angle);
+      },
       measureText: (text: string) => ({
         width:
           {
@@ -130,7 +139,7 @@ afterEach(() => {
 
 describe('text export rendering', () => {
   it('draws multiline text content from texts[] instead of relying on legacy textOverlay', () => {
-    const context: MockContext = { drawCalls: [] };
+    const context: MockContext = { drawCalls: [], translateCalls: [], rotateCalls: [] };
     globalDocument.document = createMockCanvasDocument(context);
 
     const result = createProcessedCanvas(
@@ -144,6 +153,7 @@ describe('text export rendering', () => {
           color: '#ffffff',
           align: 'center',
           lineHeight: 1.25,
+          rotation: 0,
         },
         {
           id: 'text-2',
@@ -154,6 +164,7 @@ describe('text export rendering', () => {
           color: '#38BDF8',
           align: 'left',
           lineHeight: 1.25,
+          rotation: 0,
         },
       ]),
     );
@@ -165,5 +176,29 @@ describe('text export rendering', () => {
       textAlign: 'left',
       fillStyle: '#38BDF8',
     });
+  });
+
+  it('rotates text export with canvas rotation calls', () => {
+    const context: MockContext = { drawCalls: [], translateCalls: [], rotateCalls: [] };
+    globalDocument.document = createMockCanvasDocument(context);
+
+    createProcessedCanvas(
+      makeStateWithTexts([
+        {
+          id: 'text-1',
+          content: '标题',
+          xRatio: 0.5,
+          yRatio: 0.5,
+          fontSize: 32,
+          color: '#ffffff',
+          align: 'center',
+          lineHeight: 1.25,
+          rotation: 45,
+        },
+      ]),
+    );
+
+    expect(context.translateCalls.length).toBeGreaterThan(0);
+    expect(context.rotateCalls.some((angle) => Math.abs(angle - Math.PI / 4) < 0.0001)).toBe(true);
   });
 });

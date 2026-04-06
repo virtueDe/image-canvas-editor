@@ -24,8 +24,11 @@ import {
 } from './types';
 import {
   isPointInTextBlock,
+  isPointInRotatedTextBlock,
+  normalizeTextRotation,
   resolveEmptyTextAnchorCompensation,
   resolveDragHandleScreenRect,
+  resolveTextRotateHandleScreenPoint,
   resolveTextScreenRect,
 } from './text-engine';
 import {
@@ -88,6 +91,7 @@ const MIN_VIEWPORT_ZOOM = 1;
 const MAX_VIEWPORT_ZOOM = 4;
 const VIEWPORT_ZOOM_STEP = 0.2;
 const HISTORY_LIMIT = 100;
+const ROTATED_TEXT_HANDLE_SIZE = 24;
 
 const createEditingTextToolState = (textId: string, caretIndex: number): TextToolState => ({
   mode: 'editing',
@@ -189,6 +193,13 @@ const getPointerPreviewRatio = (
     metrics.displayHeight > 0 ? clamp((point.canvasY - metrics.displayY) / metrics.displayHeight, 0, 1) : 0.5,
 });
 
+const createCenteredRect = (centerX: number, centerY: number, size: number): Rect => ({
+  x: centerX - size / 2,
+  y: centerY - size / 2,
+  width: size,
+  height: size,
+});
+
 const resolveTextHitTarget = (
   state: EditorState,
   metrics: PreviewViewMetrics,
@@ -208,7 +219,16 @@ const resolveTextHitTarget = (
     );
 
     if (activeTextRect) {
-      const handleRect = resolveDragHandleScreenRect(activeTextRect);
+      const rotatedHandlePoint = resolveTextRotateHandleScreenPoint(
+        activeText,
+        metrics.sourceWidth,
+        metrics.sourceHeight,
+        displayRect,
+      );
+      const handleRect =
+        normalizeTextRotation(activeText.rotation ?? 0) === 0 || !rotatedHandlePoint
+          ? resolveDragHandleScreenRect(activeTextRect)
+          : createCenteredRect(rotatedHandlePoint.x, rotatedHandlePoint.y, ROTATED_TEXT_HANDLE_SIZE);
 
       if (pointInRect(pointX, pointY, handleRect)) {
         return {
@@ -224,9 +244,17 @@ const resolveTextHitTarget = (
     : [...textState.texts].reverse();
 
   for (const text of bodyHitOrder) {
+    const sourceX =
+      displayRect.width > 0 ? ((pointX - displayRect.x) / displayRect.width) * metrics.sourceWidth : 0;
+    const sourceY =
+      displayRect.height > 0 ? ((pointY - displayRect.y) / displayRect.height) * metrics.sourceHeight : 0;
     const bodyRect = resolveTextScreenRect(text, metrics.sourceWidth, metrics.sourceHeight, displayRect);
+    const isBodyHit =
+      normalizeTextRotation(text.rotation ?? 0) === 0
+        ? bodyRect !== null && isPointInTextBlock(bodyRect, pointX, pointY)
+        : isPointInRotatedTextBlock(text, sourceX, sourceY, metrics.sourceWidth, metrics.sourceHeight);
 
-    if (bodyRect && isPointInTextBlock(bodyRect, pointX, pointY)) {
+    if (isBodyHit) {
       return {
         type: 'body',
         textId: text.id,
@@ -1153,6 +1181,26 @@ export class ImageCanvasEditor {
     });
   }
 
+  previewActiveTextRotation(rotation: number): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
+    this.previewChange((currentState) => this.resolveActiveTextRotationState(currentState, rotation));
+  }
+
+  updateActiveTextRotation(rotation: number): void {
+    this.commitActiveTextRotation(rotation);
+  }
+
+  commitActiveTextRotation(rotation: number): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
+    this.commitChange((currentState) => this.resolveActiveTextRotationState(currentState, rotation));
+  }
+
   updateRotation(rotation: number): void {
     this.commitRotation(rotation);
   }
@@ -1575,6 +1623,29 @@ export class ImageCanvasEditor {
     return {
       ...text,
       xRatio: clamp(text.xRatio + deltaX / sourceWidth, 0, 1),
+    };
+  }
+
+  private resolveActiveTextRotationState(currentState: EditorState, rotation: number): EditorState {
+    const currentTextState = normalizeTextState(currentState);
+
+    if (!currentTextState.activeTextId) {
+      return currentState;
+    }
+
+    const nextRotation = normalizeTextRotation(rotation);
+    const nextTexts = currentTextState.texts.map((text) =>
+      text.id === currentTextState.activeTextId
+        ? {
+            ...text,
+            rotation: nextRotation,
+          }
+        : text,
+    );
+
+    return {
+      ...currentState,
+      ...this.createTextStatePatch(nextTexts, currentTextState.activeTextId, currentTextState.textToolState),
     };
   }
 
