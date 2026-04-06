@@ -14,6 +14,7 @@ const {
   hasImage,
   activeText,
   hasActiveText,
+  activeTextRotation,
   isTextInserting,
   isTextEditing,
   hiddenTextareaValue,
@@ -35,6 +36,8 @@ const {
   toggleFlip,
   previewRotation,
   commitRotation,
+  previewActiveTextRotation,
+  commitActiveTextRotation,
   startTextInsertion,
   removeTextOverlay,
   onHiddenTextareaInput,
@@ -99,6 +102,8 @@ const hiddenTextInputRef = ref<HTMLTextAreaElement | null>(null);
 let hiddenTextInputSyncVersion = 0;
 const TEXT_FONT_SIZE_MIN = 12;
 const TEXT_FONT_SIZE_MAX = 180;
+const TEXT_ROTATION_MIN = -180;
+const TEXT_ROTATION_MAX = 180;
 
 const applyDocumentTheme = (nextTheme: WorkbenchTheme): void => {
   if (typeof document === 'undefined') {
@@ -146,7 +151,7 @@ const stageHint = computed(() =>
       : isTextEditing.value
         ? '编辑态：直接输入文字，点击空白区域结束本次编辑。'
         : hasActiveText.value
-          ? '文字已选中：点击文字继续编辑，拖动右上手柄移动位置。'
+          ? '文字已选中：点击文字继续编辑，拖动方形手柄移动位置，拖动圆形手柄旋转角度。'
           : '普通模式：拖拽移动画布，滚轮缩放，双击复位视图。',
 );
 const isMobileInspectorModal = computed(() => !isDesktopViewport.value && isInspectorOpen.value);
@@ -233,6 +238,9 @@ const syncHiddenTextInput = async (): Promise<void> => {
 const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
 const clampTextFontSize = (value: number): number =>
   Math.min(TEXT_FONT_SIZE_MAX, Math.max(TEXT_FONT_SIZE_MIN, Math.round(value)));
+const clampTextRotation = (value: number): number =>
+  Math.min(TEXT_ROTATION_MAX, Math.max(TEXT_ROTATION_MIN, Math.round(value)));
+const activeTextRotationLabel = computed(() => `${Math.round(activeTextRotation.value)}°`);
 const handleTextFontSizeChange = (nextValue: number): void => {
   if (!hasActiveText.value || !canEditText.value || Number.isNaN(nextValue)) {
     return;
@@ -240,6 +248,20 @@ const handleTextFontSizeChange = (nextValue: number): void => {
 
   const normalized = clampTextFontSize(nextValue);
   updateTextOverlayFontSize(normalized);
+};
+const handleTextRotationPreview = (nextValue: number): void => {
+  if (!hasActiveText.value || !canEditText.value || Number.isNaN(nextValue)) {
+    return;
+  }
+
+  previewActiveTextRotation(clampTextRotation(nextValue));
+};
+const handleTextRotationCommit = (nextValue: number): void => {
+  if (!hasActiveText.value || !canEditText.value || Number.isNaN(nextValue)) {
+    return;
+  }
+
+  commitActiveTextRotation(clampTextRotation(nextValue));
 };
 
 watch(
@@ -547,6 +569,23 @@ onBeforeUnmount(() => {
                       </span>
                       <input class="input-range" type="range" :min="TEXT_FONT_SIZE_MIN" :max="TEXT_FONT_SIZE_MAX" step="1" :disabled="!hasActiveText || !canEditText" :value="activeTextFontSize" @input="handleTextFontSizeChange(getRangeValue($event))" />
                     </label>
+                    <label class="block text-sm text-[color:var(--studio-ink-muted)]">
+                      <span class="mb-2 flex items-center justify-between">
+                        <span>旋转</span>
+                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ activeTextRotationLabel }}</span>
+                      </span>
+                      <input
+                        class="input-range"
+                        type="range"
+                        :min="TEXT_ROTATION_MIN"
+                        :max="TEXT_ROTATION_MAX"
+                        step="1"
+                        :disabled="!hasActiveText || !canEditText"
+                        :value="activeTextRotation"
+                        @input="handleTextRotationPreview(getRangeValue($event))"
+                        @change="handleTextRotationCommit(getRangeValue($event))"
+                      />
+                    </label>
                     <div>
                       <div class="mb-2 flex items-center justify-between text-sm text-[color:var(--studio-ink-muted)]">
                         <span>颜色</span>
@@ -559,7 +598,7 @@ onBeforeUnmount(() => {
                         </button>
                       </div>
                     </div>
-                    <p class="text-helper text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasActiveText ? '当前选中文字会参与撤销、重做和 PNG 导出。' : '新增后可点击文字直接编辑，拖拽手柄移动位置。' }}</p>
+                    <p class="text-helper text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasActiveText ? '当前选中文字会参与撤销、重做和 PNG 导出。' : '新增后可点击文字直接编辑；选中后拖动方形手柄移动位置，拖动圆形手柄旋转角度。' }}</p>
                   </div>
                 </InspectorSection>
                 <InspectorSection title="滤镜预设" hint="先预设，再微调" :open="sectionOpen.preset" @toggle="(next) => setSectionOpen('preset', next)">
