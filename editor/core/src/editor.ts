@@ -65,6 +65,16 @@ type PreviewInteraction =
       originYRatio: number;
       displayWidth: number;
       displayHeight: number;
+    }
+  | {
+      mode: 'rotating-text';
+      textId: string;
+      startClientX: number;
+      startClientY: number;
+      originRotation: number;
+      anchorClientX: number;
+      anchorClientY: number;
+      startAngle: number;
     };
 
 type TextHitTarget =
@@ -73,7 +83,11 @@ type TextHitTarget =
       textId: string;
     }
   | {
-      type: 'handle';
+      type: 'move-handle';
+      textId: string;
+    }
+  | {
+      type: 'rotate-handle';
       textId: string;
     };
 
@@ -200,6 +214,13 @@ const createCenteredRect = (centerX: number, centerY: number, size: number): Rec
   height: size,
 });
 
+const resolvePointerAngle = (
+  clientX: number,
+  clientY: number,
+  anchorClientX: number,
+  anchorClientY: number,
+): number => (Math.atan2(clientY - anchorClientY, clientX - anchorClientX) * 180) / Math.PI;
+
 const resolveTextHitTarget = (
   state: EditorState,
   metrics: PreviewViewMetrics,
@@ -219,20 +240,30 @@ const resolveTextHitTarget = (
     );
 
     if (activeTextRect) {
+      const moveHandleRect = resolveDragHandleScreenRect(activeTextRect);
+      const isEditingActiveText =
+        textState.textToolState.mode === 'editing' && textState.textToolState.textId === activeText.id;
       const rotatedHandlePoint = resolveTextRotateHandleScreenPoint(
         activeText,
         metrics.sourceWidth,
         metrics.sourceHeight,
         displayRect,
       );
-      const handleRect =
-        normalizeTextRotation(activeText.rotation ?? 0) === 0 || !rotatedHandlePoint
-          ? resolveDragHandleScreenRect(activeTextRect)
-          : createCenteredRect(rotatedHandlePoint.x, rotatedHandlePoint.y, ROTATED_TEXT_HANDLE_SIZE);
+      const rotateHandleRect =
+        !isEditingActiveText && rotatedHandlePoint
+          ? createCenteredRect(rotatedHandlePoint.x, rotatedHandlePoint.y, ROTATED_TEXT_HANDLE_SIZE)
+          : null;
 
-      if (pointInRect(pointX, pointY, handleRect)) {
+      if (pointInRect(pointX, pointY, moveHandleRect)) {
         return {
-          type: 'handle',
+          type: 'move-handle',
+          textId: activeText.id,
+        };
+      }
+
+      if (rotateHandleRect && pointInRect(pointX, pointY, rotateHandleRect)) {
+        return {
+          type: 'rotate-handle',
           textId: activeText.id,
         };
       }
@@ -359,15 +390,27 @@ export class ImageCanvasEditor {
       if (hitTarget) {
         const shouldFinishCurrentEditing =
           editingTextId !== null &&
-          (hitTarget.type === 'handle' || hitTarget.textId !== editingTextId);
+          (hitTarget.type !== 'body' || hitTarget.textId !== editingTextId);
 
         if (shouldFinishCurrentEditing) {
           this.finishTextEditing();
         }
 
-        if (hitTarget.type === 'handle') {
+        if (hitTarget.type === 'move-handle') {
           canvas.setPointerCapture(event.pointerId);
           this.beginTextDrag(hitTarget.textId, event.clientX, event.clientY, previewMetrics);
+          return;
+        }
+
+        if (hitTarget.type === 'rotate-handle') {
+          canvas.setPointerCapture(event.pointerId);
+          this.beginTextRotation(
+            hitTarget.textId,
+            event.clientX,
+            event.clientY,
+            previewMetrics,
+            canvas.getBoundingClientRect(),
+          );
           return;
         }
 
@@ -457,6 +500,11 @@ export class ImageCanvasEditor {
             ? (event.clientY - this.previewInteraction.startClientY) / this.previewInteraction.displayHeight
             : 0),
       );
+      return;
+    }
+
+    if (this.previewInteraction.mode === 'rotating-text' && !state.cropMode) {
+      this.rotateTextTo(event.clientX, event.clientY);
       return;
     }
 
@@ -599,6 +647,11 @@ export class ImageCanvasEditor {
 
     if (previewInteraction.mode === 'moving-text') {
       this.finishTextDrag();
+      return;
+    }
+
+    if (previewInteraction.mode === 'rotating-text') {
+      this.finishTextRotation();
       return;
     }
 
@@ -996,6 +1049,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.seedPreviewBaselineFromCommittedState();
     this.setState((currentState) => ({
       ...currentState,
       ...this.createTextStatePatch(normalizeTextState(currentState).texts, textId, {
@@ -1459,6 +1513,10 @@ export class ImageCanvasEditor {
     this.pendingHistorySnapshot = null;
   }
 
+  private seedPreviewBaselineFromCommittedState(): void {
+    this.pendingHistorySnapshot = captureHistorySnapshot(this.getCommittedState());
+  }
+
   private resolveStateUpdater(
     updater: Partial<EditorState> | ((currentState: EditorState) => EditorState),
     currentState: EditorState,
@@ -1560,6 +1618,7 @@ export class ImageCanvasEditor {
       displayWidth: previewMetrics.displayWidth,
       displayHeight: previewMetrics.displayHeight,
     };
+    this.seedPreviewBaselineFromCommittedState();
     this.setState((currentState) => ({
       ...currentState,
       ...this.createTextStatePatch(normalizeTextState(currentState).texts, textId, {
@@ -1570,6 +1629,102 @@ export class ImageCanvasEditor {
         originXRatio: activeText.xRatio,
         originYRatio: activeText.yRatio,
       }),
+    }));
+  }
+
+  private beginTextRotation(
+    textId: string,
+    startClientX: number,
+    startClientY: number,
+    previewMetrics: PreviewViewMetrics,
+    canvasRect: DOMRect,
+  ): void {
+    const textState = normalizeTextState(this.store.getState());
+    const activeText = textState.texts.find((text) => text.id === textId);
+
+    if (!activeText) {
+      return;
+    }
+
+    const anchorClientX = canvasRect.left + previewMetrics.displayX + activeText.xRatio * previewMetrics.displayWidth;
+    const anchorClientY = canvasRect.top + previewMetrics.displayY + activeText.yRatio * previewMetrics.displayHeight;
+    const originRotation = normalizeTextRotation(activeText.rotation ?? 0);
+
+    this.previewInteraction = {
+      mode: 'rotating-text',
+      textId,
+      startClientX,
+      startClientY,
+      originRotation,
+      anchorClientX,
+      anchorClientY,
+      startAngle: resolvePointerAngle(startClientX, startClientY, anchorClientX, anchorClientY),
+    };
+    this.seedPreviewBaselineFromCommittedState();
+    this.setState((currentState) => ({
+      ...currentState,
+      ...this.createTextStatePatch(normalizeTextState(currentState).texts, textId, {
+        mode: 'rotating',
+        textId,
+        startClientX,
+        startClientY,
+        originRotation,
+        anchorX: activeText.xRatio * previewMetrics.sourceWidth,
+        anchorY: activeText.yRatio * previewMetrics.sourceHeight,
+      }),
+    }));
+  }
+
+  private rotateTextTo(clientX: number, clientY: number): void {
+    const interaction = this.previewInteraction;
+    const state = normalizeTextState(this.store.getState());
+
+    if (interaction.mode !== 'rotating-text' || state.textToolState.mode !== 'rotating') {
+      return;
+    }
+
+    const nextAngle = resolvePointerAngle(clientX, clientY, interaction.anchorClientX, interaction.anchorClientY);
+    const delta = normalizeTextRotation(nextAngle - interaction.startAngle);
+    const nextRotation = normalizeTextRotation(interaction.originRotation + delta);
+
+    this.previewChange((currentState) => {
+      const currentTextState = normalizeTextState(currentState);
+
+      if (currentTextState.textToolState.mode !== 'rotating') {
+        return currentState;
+      }
+
+      const rotatingState = currentTextState.textToolState;
+      const nextTexts = currentTextState.texts.map((text) =>
+        text.id === rotatingState.textId
+          ? {
+              ...text,
+              rotation: nextRotation,
+            }
+          : text,
+      );
+
+      return {
+        ...currentState,
+        ...this.createTextStatePatch(nextTexts, rotatingState.textId, rotatingState),
+      };
+    });
+  }
+
+  private finishTextRotation(): void {
+    const state = normalizeTextState(this.store.getState());
+
+    if (state.textToolState.mode !== 'rotating') {
+      return;
+    }
+
+    this.commitPreviewState((previewState) => ({
+      ...previewState,
+      ...this.createTextStatePatch(
+        normalizeTextState(previewState).texts,
+        normalizeTextState(previewState).activeTextId,
+        createIdleTextToolState(),
+      ),
     }));
   }
 
@@ -1774,7 +1929,11 @@ export class ImageCanvasEditor {
       return;
     }
 
-    if (this.previewInteraction.mode === 'moving-text' || this.previewInteraction.mode === 'panning') {
+    if (
+      this.previewInteraction.mode === 'moving-text' ||
+      this.previewInteraction.mode === 'rotating-text' ||
+      this.previewInteraction.mode === 'panning'
+    ) {
       this.canvas.style.cursor = 'grabbing';
       return;
     }

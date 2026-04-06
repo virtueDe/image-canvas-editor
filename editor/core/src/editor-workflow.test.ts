@@ -128,6 +128,7 @@ describe('multi-text editor workflow', () => {
       xRatio: 0.3,
       yRatio: 0.35,
     });
+    expect(editor.getState().textToolState.mode).toBe('idle');
   });
 
   it('updates active text rotation', () => {
@@ -156,6 +157,71 @@ describe('multi-text editor workflow', () => {
       content: '标题',
       rotation: 0,
     });
+
+    editor.undo();
+    expect(editor.getState().texts).toHaveLength(0);
+  });
+
+  it('keeps pointer-driven text rotation as a single history session', () => {
+    const editor = new ImageCanvasEditor();
+    const editorInternals = editor as unknown as {
+      beginTextRotation: (
+        textId: string,
+        startClientX: number,
+        startClientY: number,
+        previewMetrics: {
+          displayX: number;
+          displayY: number;
+          displayWidth: number;
+          displayHeight: number;
+          sourceWidth: number;
+          sourceHeight: number;
+        },
+        canvasRect: DOMRect,
+      ) => void;
+      rotateTextTo: (clientX: number, clientY: number) => void;
+      finishTextRotation: () => void;
+    };
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.5, 0.5);
+    editor.insertText('标题');
+    editor.finishTextEditing();
+
+    const [text] = editor.getState().texts;
+    editorInternals.beginTextRotation(
+      text.id,
+      500,
+      300,
+      {
+        displayX: 0,
+        displayY: 0,
+        displayWidth: 1000,
+        displayHeight: 800,
+        sourceWidth: 1000,
+        sourceHeight: 800,
+      },
+      { left: 0, top: 0 } as DOMRect,
+    );
+
+    expect(editor.getState().textToolState).toMatchObject({
+      mode: 'rotating',
+      textId: text.id,
+    });
+
+    editorInternals.rotateTextTo(600, 400);
+    expect(editor.getState().texts[0]?.rotation).toBeCloseTo(90, 6);
+
+    editorInternals.finishTextRotation();
+    expect(editor.getState().textToolState.mode).toBe('idle');
+
+    editor.undo();
+    expect(editor.getState().texts[0]).toMatchObject({
+      id: text.id,
+      content: '标题',
+      rotation: 0,
+    });
+    expect(editor.getState().textToolState.mode).toBe('idle');
 
     editor.undo();
     expect(editor.getState().texts).toHaveLength(0);

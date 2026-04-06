@@ -1,6 +1,5 @@
 import { createProcessedCanvas } from './image-processing';
 import {
-  normalizeTextRotation,
   resolveDragHandleScreenRect,
   resolveTextCaretRect,
   resolveTextLayout,
@@ -284,11 +283,24 @@ export class CanvasRenderer {
       imageRect,
       measureText,
     );
-    const handleRect =
-      normalizeTextRotation(activeText.rotation ?? 0) === 0 || !rotatedHandlePoint
-        ? resolveDragHandleScreenRect(screenRect)
-        : createCenteredRect(rotatedHandlePoint.x, rotatedHandlePoint.y, ROTATED_TEXT_HANDLE_SIZE);
+    this.drawTextMoveHandle(ctx, resolveDragHandleScreenRect(screenRect));
 
+    if (!(textState.textToolState.mode === 'editing' && textState.textToolState.textId === activeText.id)) {
+      const topCenterScreenPoint = this.resolveTextTopCenterScreenPoint(
+        activeText,
+        sourceWidth,
+        sourceHeight,
+        imageRect,
+        measureText,
+      );
+
+      if (rotatedHandlePoint && topCenterScreenPoint) {
+        this.drawTextRotateHandle(ctx, topCenterScreenPoint, rotatedHandlePoint);
+      }
+    }
+  }
+
+  private drawTextMoveHandle(ctx: CanvasRenderingContext2D, handleRect: Rect): void {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
     ctx.strokeStyle = 'rgba(233, 192, 131, 0.9)';
@@ -310,6 +322,61 @@ export class CanvasRenderer {
     }
 
     ctx.restore();
+  }
+
+  private drawTextRotateHandle(
+    ctx: CanvasRenderingContext2D,
+    startPoint: ScreenPoint,
+    handlePoint: ScreenPoint,
+  ): void {
+    const handleRect = createCenteredRect(handlePoint.x, handlePoint.y, ROTATED_TEXT_HANDLE_SIZE);
+    const radius = handleRect.width / 2;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(233, 192, 131, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(startPoint.x, startPoint.y);
+    ctx.lineTo(handlePoint.x, handlePoint.y);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.beginPath();
+    ctx.arc(handlePoint.x, handlePoint.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#e9c083';
+    ctx.beginPath();
+    ctx.arc(handlePoint.x, handlePoint.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private resolveTextTopCenterScreenPoint(
+    text: NonNullable<EditorState['texts']>[number],
+    sourceWidth: number,
+    sourceHeight: number,
+    imageRect: Rect,
+    measureText: (text: string, fontSize: number) => TextMetrics,
+  ): ScreenPoint | null {
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      return null;
+    }
+
+    const layout = resolveTextLayout(text, sourceWidth, sourceHeight, measureText);
+    const sourcePoint = toScreenTextPoint(
+      layout.bodyRect.x + layout.bodyRect.width / 2 - layout.anchorX,
+      layout.bodyRect.y - layout.anchorY,
+      layout.anchorX,
+      layout.anchorY,
+      text.rotation ?? 0,
+    );
+
+    return {
+      x: imageRect.x + (sourcePoint.x / sourceWidth) * imageRect.width,
+      y: imageRect.y + (sourcePoint.y / sourceHeight) * imageRect.height,
+    };
   }
 
   private resolveRotatedScreenRectPoints(
