@@ -92,7 +92,8 @@ export const snapshotsEqual = (left: HistorySnapshot, right: HistorySnapshot): b
         text.fontSize === other.fontSize &&
         text.color === other.color &&
         text.align === other.align &&
-        text.lineHeight === other.lineHeight
+        text.lineHeight === other.lineHeight &&
+        text.rotation === other.rotation
       );
     });
 

@@ -74,6 +74,7 @@ export const createDefaultTextOverlay = (): TextOverlay => ({
   yRatio: 0.5,
   fontSize: DEFAULT_FONT_SIZE,
   color: DEFAULT_COLOR,
+  rotation: 0,
 });
 
 export const sanitizeTextOverlay = (textOverlay: TextOverlay): TextOverlay => ({
@@ -82,6 +83,7 @@ export const sanitizeTextOverlay = (textOverlay: TextOverlay): TextOverlay => ({
   yRatio: clamp(textOverlay.yRatio, 0, 1),
   fontSize: Math.round(clamp(textOverlay.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE)),
   color: textOverlay.color,
+  rotation: textOverlay.rotation ?? 0,
 });
 
 export const resolveTextOverlayLayout = (

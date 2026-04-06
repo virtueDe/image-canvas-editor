@@ -276,6 +276,139 @@ export const resolveTextCaretScreenRect = (
   };
 };
 
+export const normalizeTextRotation = (rotation: number): number => {
+  if (!Number.isFinite(rotation)) {
+    return 0;
+  }
+
+  const normalized = ((rotation + 180) % 360 + 360) % 360 - 180;
+
+  return normalized === -180 && rotation > 0 ? 180 : normalized;
+};
+
+export const toLocalTextPoint = (
+  pointX: number,
+  pointY: number,
+  anchorX: number,
+  anchorY: number,
+  rotation: number,
+): {
+  x: number;
+  y: number;
+} => {
+  const radians = (normalizeTextRotation(rotation) * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const deltaX = pointX - anchorX;
+  const deltaY = pointY - anchorY;
+
+  return {
+    x: deltaX * cos + deltaY * sin,
+    y: -deltaX * sin + deltaY * cos,
+  };
+};
+
+export const toScreenTextPoint = (
+  localX: number,
+  localY: number,
+  anchorX: number,
+  anchorY: number,
+  rotation: number,
+): {
+  x: number;
+  y: number;
+} => {
+  const radians = (normalizeTextRotation(rotation) * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  return {
+    x: anchorX + localX * cos - localY * sin,
+    y: anchorY + localX * sin + localY * cos,
+  };
+};
+
+export const isPointInRotatedTextBlock = (
+  item: TextItem,
+  pointX: number,
+  pointY: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  measureText: (text: string, fontSize: number) => TextMeasurement = defaultMeasureText,
+): boolean => {
+  const layout = resolveTextLayout(item, canvasWidth, canvasHeight, measureText);
+  const rotation = normalizeTextRotation(item.rotation ?? 0);
+
+  if (rotation === 0) {
+    return isPointInTextBlock(layout.bodyRect, pointX, pointY);
+  }
+
+  const localPoint = toLocalTextPoint(pointX, pointY, layout.anchorX, layout.anchorY, rotation);
+
+  return isPointInTextBlock(
+    layout.bodyRect,
+    layout.anchorX + localPoint.x,
+    layout.anchorY + localPoint.y,
+  );
+};
+
+export const resolveTextRotateHandleScreenPoint = (
+  item: TextItem,
+  sourceWidth: number,
+  sourceHeight: number,
+  displayRect: Pick<Rect, 'x' | 'y' | 'width' | 'height'>,
+  measureText: (text: string, fontSize: number) => TextMeasurement = defaultMeasureText,
+): {
+  x: number;
+  y: number;
+} | null => {
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return null;
+  }
+
+  const layout = resolveTextLayout(item, sourceWidth, sourceHeight, measureText);
+  const rotation = normalizeTextRotation(item.rotation ?? 0);
+  const scaleX = displayRect.width / sourceWidth;
+  const scaleY = displayRect.height / sourceHeight;
+  const topCenterLocalX = layout.bodyRect.x + layout.bodyRect.width / 2 - layout.anchorX;
+  const topCenterLocalY = layout.bodyRect.y - layout.anchorY;
+  const bodyCenterLocalX = layout.bodyRect.x + layout.bodyRect.width / 2 - layout.anchorX;
+  const bodyCenterLocalY = layout.bodyRect.y + layout.bodyRect.height / 2 - layout.anchorY;
+  const topCenterSourcePoint = toScreenTextPoint(
+    topCenterLocalX,
+    topCenterLocalY,
+    layout.anchorX,
+    layout.anchorY,
+    rotation,
+  );
+  const bodyCenterSourcePoint = toScreenTextPoint(
+    bodyCenterLocalX,
+    bodyCenterLocalY,
+    layout.anchorX,
+    layout.anchorY,
+    rotation,
+  );
+  const topCenterScreenPoint = {
+    x: displayRect.x + topCenterSourcePoint.x * scaleX,
+    y: displayRect.y + topCenterSourcePoint.y * scaleY,
+  };
+  const bodyCenterScreenPoint = {
+    x: displayRect.x + bodyCenterSourcePoint.x * scaleX,
+    y: displayRect.y + bodyCenterSourcePoint.y * scaleY,
+  };
+  const outwardX = topCenterScreenPoint.x - bodyCenterScreenPoint.x;
+  const outwardY = topCenterScreenPoint.y - bodyCenterScreenPoint.y;
+  const outwardLength = Math.hypot(outwardX, outwardY);
+  const normalizedOutwardX = outwardLength > 0 ? outwardX / outwardLength : 0;
+  const normalizedOutwardY = outwardLength > 0 ? outwardY / outwardLength : -1;
+  const handleOffset = DRAG_HANDLE_GAP + DRAG_HANDLE_SIZE / 2;
+
+  return {
+    x: topCenterScreenPoint.x + normalizedOutwardX * handleOffset,
+    y: topCenterScreenPoint.y + normalizedOutwardY * handleOffset,
+  };
+};
+
 /**
  * 基于屏幕空间正文矩形生成拖拽手柄命中区；请勿传入 source/image 坐标。
  */

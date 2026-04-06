@@ -1,5 +1,5 @@
 import { PRESET_FILTERS } from './presets';
-import { resolveTextLayout } from './text-engine';
+import { normalizeTextRotation, resolveTextLayout } from './text-engine';
 import { normalizeTextState, type EditorAdjustments, type EditorState, type ImageResource, type Rect } from './types';
 import { clamp, createCanvas, fullImageRect } from './utils';
 
@@ -131,15 +131,18 @@ const drawTexts = (canvas: HTMLCanvasElement, state: EditorState): void => {
       ctx.font = `${fontSize}px ${FONT_FAMILY}`;
       return ctx.measureText(text);
     });
+    const radians = (normalizeTextRotation(textItem.rotation ?? 0) * Math.PI) / 180;
 
     ctx.save();
     ctx.font = `${textItem.fontSize}px ${FONT_FAMILY}`;
     ctx.fillStyle = textItem.color;
     ctx.textAlign = textItem.align;
     ctx.textBaseline = 'alphabetic';
+    ctx.translate(layout.anchorX, layout.anchorY);
+    ctx.rotate(radians);
 
     for (const line of layout.lines) {
-      ctx.fillText(line.text || ' ', layout.anchorX, line.baselineY);
+      ctx.fillText(line.text || ' ', 0, line.baselineY - layout.anchorY);
     }
 
     ctx.restore();

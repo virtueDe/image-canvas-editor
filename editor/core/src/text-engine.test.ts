@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { resolveTextOverlayLayout } from './text-overlay';
 import type { TextItem } from './types';
 import {
+  isPointInRotatedTextBlock,
   isPointInTextBlock,
+  normalizeTextRotation,
   resolveEmptyTextAnchorCompensation,
   resolveTextCaretRect,
   resolveTextCaretScreenRect,
   resolveDragHandleScreenRect,
+  resolveTextRotateHandleScreenPoint,
+  toLocalTextPoint,
   resolveTextLayout,
   resolveTextScreenRect,
   splitTextLines,
@@ -21,6 +25,7 @@ const item: TextItem = {
   color: '#fff',
   align: 'center',
   lineHeight: 1.25,
+  rotation: 0,
 };
 
 const measureText = (text: string) => ({
@@ -50,6 +55,21 @@ describe('splitTextLines', () => {
 });
 
 describe('text engine layout', () => {
+  it('normalizes text rotation into the stable signed range', () => {
+    expect(normalizeTextRotation(0)).toBe(0);
+    expect(normalizeTextRotation(360)).toBe(0);
+    expect(normalizeTextRotation(450)).toBe(90);
+    expect(normalizeTextRotation(-450)).toBe(-90);
+    expect(normalizeTextRotation(540)).toBe(180);
+  });
+
+  it('maps screen points into rotated local text space', () => {
+    const point = toLocalTextPoint(650, 400, 600, 400, 90);
+
+    expect(point.x).toBeCloseTo(0, 4);
+    expect(point.y).toBeCloseTo(-50, 4);
+  });
+
   it('measures multiline content with deterministic body rect and baselines', () => {
     const layout = resolveTextLayout(item, 1200, 800, measureText);
 
@@ -280,5 +300,37 @@ describe('text engine layout', () => {
         handleRect.y + handleRect.height / 2,
       ),
     ).toBe(false);
+  });
+
+  it('hits rotated text body via inverse transform', () => {
+    const rotatedItem: TextItem = {
+      ...item,
+      content: '第一行',
+      rotation: 90,
+    };
+
+    expect(isPointInRotatedTextBlock(rotatedItem, 602, 398, 1200, 800, measureText)).toBe(true);
+    expect(isPointInRotatedTextBlock(rotatedItem, 602, 340, 1200, 800, measureText)).toBe(false);
+  });
+
+  it('resolves rotate handle point above rotated body center', () => {
+    const rotatedItem: TextItem = {
+      ...item,
+      content: '第一行',
+      rotation: 90,
+    };
+    const displayRect = { x: 0, y: 0, width: 1200, height: 800 };
+    const handle = resolveTextRotateHandleScreenPoint(
+      rotatedItem,
+      1200,
+      800,
+      displayRect,
+      measureText,
+    );
+
+    expect(handle).toEqual({
+      x: 644,
+      y: 400,
+    });
   });
 });

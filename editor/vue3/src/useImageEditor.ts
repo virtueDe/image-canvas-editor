@@ -7,16 +7,21 @@ import {
   type FilterPreset,
 } from '@image-canvas-editor/editor-core';
 
-type AdjustmentKey = 'contrast' | 'exposure' | 'highlights';
-type TextEditorBridge = ImageCanvasEditor & {
-  startTextInsertion: () => void;
-  replaceActiveTextContent: (text: string, selectionStart?: number, selectionEnd?: number) => void;
-  updateActiveTextSelection: (selectionStart: number, selectionEnd: number) => void;
-  setActiveTextComposing: (composing: boolean) => void;
-  removeTextOverlay: () => void;
-  updateTextOverlayFontSize: (fontSize: number) => void;
-  updateTextOverlayColor: (color: string) => void;
-};
+type AdjustmentKey = Parameters<ImageCanvasEditor['updateAdjustment']>[0];
+type TextEditorBridge = Pick<
+  ImageCanvasEditor,
+  | 'startTextInsertion'
+  | 'replaceActiveTextContent'
+  | 'updateActiveTextSelection'
+  | 'setActiveTextComposing'
+  | 'removeTextOverlay'
+  | 'updateTextOverlayFontSize'
+  | 'updateTextOverlayColor'
+  | 'previewActiveTextRotation'
+  | 'updateActiveTextRotation'
+  | 'commitActiveTextRotation'
+>;
+type EditorTextItem = NonNullable<EditorState['texts']>[number];
 
 const TEXT_PRESET_COLORS = [
   { label: '云白', value: '#F5EFE7' },
@@ -40,16 +45,16 @@ export const useImageEditor = () => {
 
     return editorRef.value;
   };
-  const getTextEditor = (): TextEditorBridge => getEditor() as TextEditorBridge;
+  const getTextEditor = (): TextEditorBridge => getEditor();
 
   const renderState = computed(() => state.value);
   const hasImage = computed(() => Boolean(renderState.value.image));
   const texts = computed<NonNullable<EditorState['texts']>>(() => renderState.value.texts ?? []);
-  const activeText = computed(() =>
-    texts.value.find((item: NonNullable<EditorState['texts']>[number]) => item.id === renderState.value.activeTextId) ??
-    null,
+  const activeText = computed<EditorTextItem | null>(
+    () => texts.value.find((item: EditorTextItem) => item.id === renderState.value.activeTextId) ?? null,
   );
   const hasActiveText = computed(() => Boolean(activeText.value));
+  const activeTextRotation = computed(() => activeText.value?.rotation ?? 0);
   const isTextInserting = computed(() => renderState.value.textToolState.mode === 'inserting');
   const isTextEditing = computed(() => renderState.value.textToolState.mode === 'editing');
   const hiddenTextareaValue = computed(() => activeText.value?.content ?? '');
@@ -105,7 +110,7 @@ export const useImageEditor = () => {
     }
 
     if (hasActiveText.value) {
-      return '当前对象已选中，可点击文字继续编辑，或拖拽手柄移动位置。';
+      return '当前对象已选中，可点击文字继续编辑，拖动方形手柄移动位置，拖动圆形手柄旋转角度。';
     }
 
     return '点击左侧文字按钮进入插入态，再在画布中落点创建文字。';
@@ -213,6 +218,15 @@ export const useImageEditor = () => {
 
   const commitRotation = (rotation: number): void => {
     getEditor().commitRotation(rotation);
+  };
+  const previewActiveTextRotation = (rotation: number): void => {
+    getTextEditor().previewActiveTextRotation(rotation);
+  };
+  const updateActiveTextRotation = (rotation: number): void => {
+    getTextEditor().updateActiveTextRotation(rotation);
+  };
+  const commitActiveTextRotation = (rotation: number): void => {
+    getTextEditor().commitActiveTextRotation(rotation);
   };
   const startTextInsertion = (): void => {
     getTextEditor().startTextInsertion();
@@ -348,6 +362,7 @@ export const useImageEditor = () => {
     texts,
     activeText,
     hasActiveText,
+    activeTextRotation,
     isTextInserting,
     isTextEditing,
     hiddenTextareaValue,
@@ -370,6 +385,9 @@ export const useImageEditor = () => {
     updateRotation,
     previewRotation,
     commitRotation,
+    previewActiveTextRotation,
+    updateActiveTextRotation,
+    commitActiveTextRotation,
     startTextInsertion,
     removeTextOverlay,
     replaceActiveTextContent,
@@ -396,3 +414,5 @@ export const useImageEditor = () => {
     restoreCurrentDraft,
   };
 };
+
+export type UseImageEditorReturn = ReturnType<typeof useImageEditor>;

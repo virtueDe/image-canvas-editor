@@ -1,9 +1,46 @@
 import { createProcessedCanvas } from './image-processing';
-import { resolveDragHandleScreenRect, resolveTextCaretScreenRect, resolveTextScreenRect } from './text-engine';
+import {
+  resolveDragHandleScreenRect,
+  resolveTextCaretRect,
+  resolveTextLayout,
+  resolveTextRotateHandleScreenPoint,
+  resolveTextScreenRect,
+  toScreenTextPoint,
+} from './text-engine';
 import { normalizeTextState, type CropViewMetrics, type EditorState, type PreviewViewMetrics, type Rect } from './types';
 import { clamp, fullImageRect } from './utils';
 
 const HANDLE_SIZE = 10;
+const TEXT_SELECTION_PADDING = 6;
+const ROTATED_TEXT_HANDLE_SIZE = 24;
+const TEXT_FONT_FAMILY = '"Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
+
+type ScreenPoint = {
+  x: number;
+  y: number;
+};
+
+const drawPolygonPath = (ctx: CanvasRenderingContext2D, points: ScreenPoint[]): void => {
+  if (points.length === 0) {
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(points[0]!.x, points[0]!.y);
+
+  for (const point of points.slice(1)) {
+    ctx.lineTo(point.x, point.y);
+  }
+
+  ctx.closePath();
+};
+
+const createCenteredRect = (centerX: number, centerY: number, size: number): Rect => ({
+  x: centerX - size / 2,
+  y: centerY - size / 2,
+  width: size,
+  height: size,
+});
 
 export class CanvasRenderer {
   private cropViewMetrics: CropViewMetrics | null = null;
@@ -186,49 +223,84 @@ export class CanvasRenderer {
       return;
     }
 
-    const screenRect = resolveTextScreenRect(activeText, sourceWidth, sourceHeight, imageRect, (text, fontSize) => {
-      ctx.font = `${fontSize}px "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
+    const measureText = (text: string, fontSize: number): TextMetrics => {
+      ctx.font = `${fontSize}px ${TEXT_FONT_FAMILY}`;
       return ctx.measureText(text);
-    });
+    };
+    const screenRect = resolveTextScreenRect(activeText, sourceWidth, sourceHeight, imageRect, measureText);
 
     if (!screenRect) {
       return;
     }
 
-    ctx.save();
-    ctx.setLineDash([6, 4]);
-    ctx.strokeStyle = 'rgba(233, 192, 131, 0.9)';
-    ctx.lineWidth = 1.5;
-    ctx.fillStyle = 'rgba(233, 192, 131, 0.12)';
-    ctx.fillRect(screenRect.x - 6, screenRect.y - 6, screenRect.width + 12, screenRect.height + 12);
-    ctx.strokeRect(screenRect.x - 6, screenRect.y - 6, screenRect.width + 12, screenRect.height + 12);
-    ctx.restore();
+    const selectionPoints = this.resolveRotatedScreenRectPoints(
+      activeText,
+      sourceWidth,
+      sourceHeight,
+      imageRect,
+      TEXT_SELECTION_PADDING,
+      measureText,
+    );
+
+    if (selectionPoints) {
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(233, 192, 131, 0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.fillStyle = 'rgba(233, 192, 131, 0.12)';
+      drawPolygonPath(ctx, selectionPoints);
+      ctx.fill();
+      drawPolygonPath(ctx, selectionPoints);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     if (textState.textToolState.mode === 'editing' && textState.textToolState.textId === activeText.id) {
-      const caretRect = resolveTextCaretScreenRect(
+      const caretPoints = this.resolveRotatedCaretPoints(
         activeText,
         sourceWidth,
         sourceHeight,
         imageRect,
         textState.textToolState.caretIndex,
-        (text, fontSize) => {
-          ctx.font = `${fontSize}px "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
-          return ctx.measureText(text);
-        },
+        measureText,
       );
 
-      if (caretRect) {
+      if (caretPoints) {
         ctx.save();
         ctx.fillStyle = '#f8fafc';
         ctx.shadowColor = 'rgba(15, 23, 42, 0.45)';
         ctx.shadowBlur = 8;
-        ctx.fillRect(caretRect.x, caretRect.y - 1, caretRect.width, caretRect.height + 2);
+        drawPolygonPath(ctx, caretPoints);
+        ctx.fill();
         ctx.restore();
       }
     }
 
-    const handleRect = resolveDragHandleScreenRect(screenRect);
+    const rotatedHandlePoint = resolveTextRotateHandleScreenPoint(
+      activeText,
+      sourceWidth,
+      sourceHeight,
+      imageRect,
+      measureText,
+    );
+    this.drawTextMoveHandle(ctx, resolveDragHandleScreenRect(screenRect));
 
+    if (!(textState.textToolState.mode === 'editing' && textState.textToolState.textId === activeText.id)) {
+      const topCenterScreenPoint = this.resolveTextTopCenterScreenPoint(
+        activeText,
+        sourceWidth,
+        sourceHeight,
+        imageRect,
+        measureText,
+      );
+
+      if (rotatedHandlePoint && topCenterScreenPoint) {
+        this.drawTextRotateHandle(ctx, topCenterScreenPoint, rotatedHandlePoint);
+      }
+    }
+  }
+
+  private drawTextMoveHandle(ctx: CanvasRenderingContext2D, handleRect: Rect): void {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
     ctx.strokeStyle = 'rgba(233, 192, 131, 0.9)';
@@ -250,6 +322,142 @@ export class CanvasRenderer {
     }
 
     ctx.restore();
+  }
+
+  private drawTextRotateHandle(
+    ctx: CanvasRenderingContext2D,
+    startPoint: ScreenPoint,
+    handlePoint: ScreenPoint,
+  ): void {
+    const handleRect = createCenteredRect(handlePoint.x, handlePoint.y, ROTATED_TEXT_HANDLE_SIZE);
+    const radius = handleRect.width / 2;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(233, 192, 131, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(startPoint.x, startPoint.y);
+    ctx.lineTo(handlePoint.x, handlePoint.y);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.beginPath();
+    ctx.arc(handlePoint.x, handlePoint.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#e9c083';
+    ctx.beginPath();
+    ctx.arc(handlePoint.x, handlePoint.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private resolveTextTopCenterScreenPoint(
+    text: NonNullable<EditorState['texts']>[number],
+    sourceWidth: number,
+    sourceHeight: number,
+    imageRect: Rect,
+    measureText: (text: string, fontSize: number) => TextMetrics,
+  ): ScreenPoint | null {
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      return null;
+    }
+
+    const layout = resolveTextLayout(text, sourceWidth, sourceHeight, measureText);
+    const sourcePoint = toScreenTextPoint(
+      layout.bodyRect.x + layout.bodyRect.width / 2 - layout.anchorX,
+      layout.bodyRect.y - layout.anchorY,
+      layout.anchorX,
+      layout.anchorY,
+      text.rotation ?? 0,
+    );
+
+    return {
+      x: imageRect.x + (sourcePoint.x / sourceWidth) * imageRect.width,
+      y: imageRect.y + (sourcePoint.y / sourceHeight) * imageRect.height,
+    };
+  }
+
+  private resolveRotatedScreenRectPoints(
+    text: NonNullable<EditorState['texts']>[number],
+    sourceWidth: number,
+    sourceHeight: number,
+    imageRect: Rect,
+    padding: number,
+    measureText: (text: string, fontSize: number) => TextMetrics,
+  ): ScreenPoint[] | null {
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      return null;
+    }
+
+    const layout = resolveTextLayout(text, sourceWidth, sourceHeight, measureText);
+    const scaleX = imageRect.width / sourceWidth;
+    const scaleY = imageRect.height / sourceHeight;
+
+    if (scaleX <= 0 || scaleY <= 0) {
+      return null;
+    }
+
+    const sourceRect = {
+      x: layout.bodyRect.x - padding / scaleX,
+      y: layout.bodyRect.y - padding / scaleY,
+      width: layout.bodyRect.width + (padding * 2) / scaleX,
+      height: layout.bodyRect.height + (padding * 2) / scaleY,
+    };
+
+    return this.toRotatedScreenPoints(sourceRect, layout.anchorX, layout.anchorY, text.rotation ?? 0, imageRect, sourceWidth, sourceHeight);
+  }
+
+  private resolveRotatedCaretPoints(
+    text: NonNullable<EditorState['texts']>[number],
+    sourceWidth: number,
+    sourceHeight: number,
+    imageRect: Rect,
+    caretIndex: number,
+    measureText: (text: string, fontSize: number) => TextMetrics,
+  ): ScreenPoint[] | null {
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      return null;
+    }
+
+    const layout = resolveTextLayout(text, sourceWidth, sourceHeight, measureText);
+    const scaleX = imageRect.width / sourceWidth;
+    const caretRect = resolveTextCaretRect(text, sourceWidth, sourceHeight, caretIndex, measureText);
+    const sourceRect = {
+      ...caretRect,
+      width: Math.max(caretRect.width, 2 / Math.max(scaleX, Number.EPSILON)),
+    };
+
+    return this.toRotatedScreenPoints(sourceRect, layout.anchorX, layout.anchorY, text.rotation ?? 0, imageRect, sourceWidth, sourceHeight);
+  }
+
+  private toRotatedScreenPoints(
+    rect: Rect,
+    anchorX: number,
+    anchorY: number,
+    rotation: number,
+    imageRect: Rect,
+    sourceWidth: number,
+    sourceHeight: number,
+  ): ScreenPoint[] {
+    const scaleX = imageRect.width / sourceWidth;
+    const scaleY = imageRect.height / sourceHeight;
+    const corners = [
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y + rect.height },
+      { x: rect.x, y: rect.y + rect.height },
+    ];
+
+    return corners.map((corner) => {
+      const rotated = toScreenTextPoint(corner.x - anchorX, corner.y - anchorY, anchorX, anchorY, rotation);
+
+      return {
+        x: imageRect.x + rotated.x * scaleX,
+        y: imageRect.y + rotated.y * scaleY,
+      };
+    });
   }
 
   private fitRect(sourceWidth: number, sourceHeight: number, maxWidth: number, maxHeight: number, gap: number): Rect {
