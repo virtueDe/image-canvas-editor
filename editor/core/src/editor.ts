@@ -110,6 +110,7 @@ const createTextItem = (id: string, xRatio: number, yRatio: number, content = ''
     color: defaults.color,
     align: 'center',
     lineHeight: 1.25,
+    rotation: defaults.rotation,
   };
 };
 
@@ -1109,6 +1110,7 @@ export class ImageCanvasEditor {
         yRatio: activeText.yRatio,
         fontSize,
         color: activeText.color,
+        rotation: activeText.rotation,
       });
       const nextTexts = currentTextState.texts.map((item) =>
         item.id === activeText.id

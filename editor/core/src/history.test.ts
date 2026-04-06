@@ -26,6 +26,7 @@ const createText = (overrides: Partial<TextItem> = {}): TextItem => ({
   color: '#E9C083',
   align: 'center',
   lineHeight: 1.25,
+  rotation: 0,
   ...overrides,
 });
 
@@ -40,6 +41,7 @@ const createState = (overrides: Partial<EditorState> = {}): EditorState => ({
     yRatio: 0.42,
     fontSize: 56,
     color: '#E9C083',
+    rotation: 0,
   },
   texts: [createText()],
   activeTextId: 'text-1',
@@ -158,6 +160,7 @@ describe('history snapshots', () => {
       yRatio: 0.3,
       fontSize: 36,
       color: '#38BDF8',
+      rotation: 0,
     });
   });
 
@@ -211,6 +214,7 @@ describe('history snapshots', () => {
         color: '#22C55E',
         align: 'center',
         lineHeight: 1.25,
+        rotation: 0,
       },
     ]);
     expect(snapshot.activeTextId).toBe('text-2');
@@ -270,6 +274,7 @@ describe('history snapshots', () => {
         color: '#E2E8F0',
         align: 'left',
         lineHeight: 1.6,
+        rotation: 0,
       },
       {
         id: 'text-2',
@@ -280,6 +285,7 @@ describe('history snapshots', () => {
         color: '#F97316',
         align: 'right',
         lineHeight: 1.8,
+        rotation: 0,
       },
     ]);
     expect(snapshot.activeTextId).toBe('text-2');
@@ -320,6 +326,55 @@ describe('history snapshots', () => {
       color: '#0EA5E9',
       align: 'right',
       lineHeight: 1.9,
+      rotation: 0,
+    });
+  });
+
+  it('history snapshot includes active text rotation', () => {
+    const snapshot = captureHistorySnapshot({
+      ...createState(),
+      textOverlay: null,
+      texts: [createText({ rotation: 32 })],
+    });
+
+    expect(snapshot.texts[0]?.rotation).toBe(32);
+  });
+
+  it('legacy textOverlay 缺失 rotation 时，不会覆盖 active text 的 richer rotation', () => {
+    const snapshot = captureHistorySnapshot(
+      createState({
+        textOverlay: {
+          text: '沿用 richer rotation',
+          xRatio: 0.41,
+          yRatio: 0.47,
+          fontSize: 30,
+          color: '#F8FAFC',
+        },
+        texts: [
+          createText({
+            id: 'text-6',
+            content: '沿用 richer rotation',
+            xRatio: 0.35,
+            yRatio: 0.42,
+            fontSize: 28,
+            color: '#E9C083',
+            rotation: 27,
+          }),
+        ],
+        activeTextId: 'text-6',
+      }),
+    );
+
+    expect(snapshot.texts[0]).toEqual({
+      id: 'text-6',
+      content: '沿用 richer rotation',
+      xRatio: 0.41,
+      yRatio: 0.47,
+      fontSize: 30,
+      color: '#F8FAFC',
+      align: 'center',
+      lineHeight: 1.25,
+      rotation: 27,
     });
   });
 

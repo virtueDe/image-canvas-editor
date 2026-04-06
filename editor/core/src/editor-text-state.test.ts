@@ -21,6 +21,7 @@ const baseState = (): EditorState => ({
     yRatio: 0.3,
     fontSize: 32,
     color: '#ffffff',
+    rotation: 0,
   },
   texts: [
     {
@@ -32,6 +33,7 @@ const baseState = (): EditorState => ({
       color: '#ffffff',
       align: 'center',
       lineHeight: 1.25,
+      rotation: 0,
     },
   ],
   activeTextId: 'text-1',
@@ -161,6 +163,7 @@ describe('draft store with multi-text schema', () => {
         color: '#ffffff',
         align: 'center',
         lineHeight: 1.25,
+        rotation: 0,
       },
     ]);
     expect(payload.activeTextId).toBe('text-1');
@@ -187,6 +190,7 @@ describe('draft store with multi-text schema', () => {
           color: '#ffffff',
           align: 'left',
           lineHeight: 1.4,
+          rotation: 0,
         },
         {
           id: 'text-2',
@@ -197,6 +201,7 @@ describe('draft store with multi-text schema', () => {
           color: '#22c55e',
           align: 'right',
           lineHeight: 1.8,
+          rotation: 0,
         },
       ],
       activeTextId: 'text-2',
@@ -234,6 +239,7 @@ describe('draft store with multi-text schema', () => {
         color: '#ffffff',
         align: 'left',
         lineHeight: 1.4,
+        rotation: 0,
       },
       {
         id: 'text-2',
@@ -244,6 +250,7 @@ describe('draft store with multi-text schema', () => {
         color: '#22c55e',
         align: 'right',
         lineHeight: 1.8,
+        rotation: 0,
       },
     ]);
     expect(payload.activeTextId).toBe('text-2');
@@ -271,6 +278,7 @@ describe('draft store with multi-text schema', () => {
           color: '#e2e8f0',
           align: 'right',
           lineHeight: 1.9,
+          rotation: 0,
         },
       ],
       activeTextId: 'text-9',
@@ -306,8 +314,82 @@ describe('draft store with multi-text schema', () => {
         color: '#e2e8f0',
         align: 'right',
         lineHeight: 1.9,
+        rotation: 0,
       },
     ]);
+  });
+
+  it('restore 会为缺失 rotation 的 legacy text 补 0 度', async () => {
+    storage.set(
+      'image-canvas-editor:draft:v2',
+      JSON.stringify({
+        schemaVersion: 2,
+        image: null,
+        cropRect: null,
+        texts: [
+          {
+            id: 'text-1',
+            content: '标题',
+            xRatio: 0.2,
+            yRatio: 0.3,
+            fontSize: 32,
+            color: '#fff',
+            align: 'center',
+            lineHeight: 1.25,
+          },
+        ],
+        activeTextId: 'text-1',
+        textToolState: { mode: 'idle', hoverTextId: null },
+        adjustments: { contrast: 0, exposure: 0, highlights: 0 },
+        transform: { rotation: 0, flipX: false, flipY: false },
+        activePreset: 'original',
+      }),
+    );
+
+    const restored = await createLocalDraftStore().restore();
+
+    expect(restored.texts[0]?.rotation).toBe(0);
+  });
+
+  it('restore 遇到 legacy textOverlay 缺失 rotation 时，会保留 texts 里的 richer rotation', async () => {
+    storage.set(
+      'image-canvas-editor:draft:v2',
+      JSON.stringify({
+        schemaVersion: 2,
+        image: null,
+        cropRect: null,
+        textOverlay: {
+          text: '标题-旧 overlay',
+          xRatio: 0.2,
+          yRatio: 0.3,
+          fontSize: 32,
+          color: '#fff',
+        },
+        texts: [
+          {
+            id: 'text-1',
+            content: '标题-旧 overlay',
+            xRatio: 0.2,
+            yRatio: 0.3,
+            fontSize: 32,
+            color: '#fff',
+            align: 'center',
+            lineHeight: 1.25,
+            rotation: 48,
+          },
+        ],
+        activeTextId: 'text-1',
+        textToolState: { mode: 'idle', hoverTextId: null },
+        adjustments: { contrast: 0, exposure: 0, highlights: 0 },
+        transform: { rotation: 0, flipX: false, flipY: false },
+        activePreset: 'original',
+      }),
+    );
+
+    const restored = await createLocalDraftStore().restore();
+
+    expect(restored.texts[0]?.rotation).toBe(48);
+    expect(restored.textOverlay?.rotation).toBe(48);
   });
 
   it('restore 会把无效的 activeTextId 和 textToolState 归一化', async () => {
@@ -327,6 +409,7 @@ describe('draft store with multi-text schema', () => {
             color: '#f8fafc',
             align: 'left',
             lineHeight: 1.4,
+            rotation: 0,
           },
         ],
         activeTextId: 'missing-text',
@@ -358,6 +441,7 @@ describe('draft store with multi-text schema', () => {
       yRatio: 0.2,
       fontSize: 28,
       color: '#f8fafc',
+      rotation: 0,
     });
   });
 });

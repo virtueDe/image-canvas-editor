@@ -34,6 +34,7 @@ export interface TextItem {
   color: string;
   align: 'left' | 'center' | 'right';
   lineHeight: number;
+  rotation: number;
 }
 
 export type TextToolState =
@@ -54,6 +55,15 @@ export type TextToolState =
       startClientY: number;
       originXRatio: number;
       originYRatio: number;
+    }
+  | {
+      mode: 'rotating';
+      textId: string;
+      startClientX: number;
+      startClientY: number;
+      originRotation: number;
+      anchorX: number;
+      anchorY: number;
     };
 
 export interface TextOverlay {
@@ -62,6 +72,7 @@ export interface TextOverlay {
   yRatio: number;
   fontSize: number;
   color: string;
+  rotation: number;
 }
 
 export interface ImageResource {
@@ -127,8 +138,12 @@ export interface TextOverlayScreenRect extends Rect {
   heightRatio: number;
 }
 
+type LegacyTextOverlay = Omit<TextOverlay, 'rotation'> & {
+  rotation?: number;
+};
+
 type TextStateCarrier = {
-  textOverlay?: TextOverlay | null;
+  textOverlay?: LegacyTextOverlay | null;
   texts?: TextItem[];
   activeTextId?: string | null;
   textToolState?: TextToolState;
@@ -149,7 +164,7 @@ export const createIdleTextToolState = (): TextToolState => ({
 });
 
 export const textOverlayToTextItem = (
-  textOverlay: TextOverlay,
+  textOverlay: LegacyTextOverlay,
   id = DEFAULT_LEGACY_TEXT_ID,
 ): TextItem => ({
   id,
@@ -160,19 +175,28 @@ export const textOverlayToTextItem = (
   color: textOverlay.color,
   align: 'center',
   lineHeight: 1.25,
+  rotation: textOverlay.rotation ?? 0,
 });
 
 const mergeTextOverlayIntoTextItem = (
   text: TextItem,
-  textOverlay: TextOverlay,
-): TextItem => ({
-  ...text,
-  content: textOverlay.text,
-  xRatio: textOverlay.xRatio,
-  yRatio: textOverlay.yRatio,
-  fontSize: textOverlay.fontSize,
-  color: textOverlay.color,
-});
+  textOverlay: LegacyTextOverlay,
+): TextItem => {
+  const nextText: TextItem = {
+    ...text,
+    content: textOverlay.text,
+    xRatio: textOverlay.xRatio,
+    yRatio: textOverlay.yRatio,
+    fontSize: textOverlay.fontSize,
+    color: textOverlay.color,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(textOverlay, 'rotation')) {
+    nextText.rotation = textOverlay.rotation ?? 0;
+  }
+
+  return nextText;
+};
 
 export const textItemToTextOverlay = (text: TextItem | null): TextOverlay | null => {
   if (!text) {
@@ -185,6 +209,7 @@ export const textItemToTextOverlay = (text: TextItem | null): TextOverlay | null
     yRatio: text.yRatio,
     fontSize: text.fontSize,
     color: text.color,
+    rotation: text.rotation ?? 0,
   };
 };
 
@@ -216,9 +241,20 @@ export const textToolStatesEqual = (
   ('originXRatio' in left ? left.originXRatio : undefined) ===
     ('originXRatio' in right ? right.originXRatio : undefined) &&
   ('originYRatio' in left ? left.originYRatio : undefined) ===
-    ('originYRatio' in right ? right.originYRatio : undefined);
+    ('originYRatio' in right ? right.originYRatio : undefined) &&
+  ('originRotation' in left ? left.originRotation : undefined) ===
+    ('originRotation' in right ? right.originRotation : undefined) &&
+  ('anchorX' in left ? left.anchorX : undefined) ===
+    ('anchorX' in right ? right.anchorX : undefined) &&
+  ('anchorY' in left ? left.anchorY : undefined) ===
+    ('anchorY' in right ? right.anchorY : undefined);
 
-const cloneTexts = (texts: TextItem[]): TextItem[] => texts.map((text) => ({ ...text }));
+const normalizeTextItem = (text: TextItem): TextItem => ({
+  ...text,
+  rotation: text.rotation ?? 0,
+});
+
+const cloneTexts = (texts: TextItem[]): TextItem[] => texts.map((text) => normalizeTextItem(text));
 
 const normalizeActiveTextId = (
   texts: TextItem[],
@@ -256,6 +292,7 @@ export const normalizeTextToolState = (
       return textToolState;
     case 'editing':
     case 'dragging':
+    case 'rotating':
       return texts.some((text) => text.id === textToolState.textId)
         ? cloneTextToolState(textToolState)
         : createIdleTextToolState();
@@ -265,17 +302,18 @@ export const normalizeTextToolState = (
 export const normalizeTextState = (
   state: TextStateCarrier,
 ): NormalizedTextState => {
+  const legacyTextOverlay = state.textOverlay ?? null;
   const baseTexts =
     state.texts && state.texts.length > 0
       ? cloneTexts(state.texts)
-      : state.textOverlay
-        ? [textOverlayToTextItem(state.textOverlay, state.activeTextId ?? DEFAULT_LEGACY_TEXT_ID)]
+      : legacyTextOverlay
+        ? [textOverlayToTextItem(legacyTextOverlay, state.activeTextId ?? DEFAULT_LEGACY_TEXT_ID)]
         : [];
   const activeTextId = normalizeActiveTextId(baseTexts, state.activeTextId);
   const texts =
-    state.textOverlay && baseTexts.length > 0
+    legacyTextOverlay && baseTexts.length > 0
       ? baseTexts.map((text) =>
-          text.id === activeTextId ? mergeTextOverlayIntoTextItem(text, state.textOverlay as TextOverlay) : text,
+          text.id === activeTextId ? mergeTextOverlayIntoTextItem(text, legacyTextOverlay) : text,
         )
       : baseTexts;
   const textToolState = normalizeTextToolState(state.textToolState, texts);
