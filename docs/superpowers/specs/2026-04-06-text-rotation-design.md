@@ -327,6 +327,14 @@
 5. 草稿恢复后角度不丢失。
 6. 撤销 / 重做能恢复旋转前后状态。
 
+## 实施结果备注
+
+- `editor/core` 已按设计补齐 `rotation` 状态、历史与草稿兼容、旋转几何、命中、预览渲染、导出渲染，以及画布双手柄交互。
+- 画布选中态当前保留方形移动手柄，并新增圆形旋转手柄；编辑态会隐藏旋转手柄，避免与文字输入状态冲突。
+- 文字旋转拖拽与文字移动拖拽都已固定 preview baseline 到交互开始前的 committed state，避免 undo 回到脏的 `dragging` / `rotating` 工具态。
+- `editor/vue3` 已暴露 `activeTextRotation`、`previewActiveTextRotation`、`updateActiveTextRotation`、`commitActiveTextRotation`，`apps/web-vue` 已接入右侧文字面板旋转滑杆。
+- 当前实现没有为旋转控件新增专门样式或图标组件改动，直接复用现有 `input-range` 与面板样式；这是刻意保持最小必要改动，不是遗漏。
+
 ## 回滚策略
 
 本次改动应拆为干净 patch：
