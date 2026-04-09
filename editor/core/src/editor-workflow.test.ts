@@ -462,6 +462,60 @@ describe('multi-text editor workflow', () => {
     expect(editor.getState().texts).toEqual([]);
   });
 
+  it('keeps in-progress text content when switching to image and brush inspector changes', () => {
+    const editor = new ImageCanvasEditor();
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.5, 0.5);
+    editor.replaceActiveTextContent('标题', 2, 2);
+
+    editor.previewAdjustment('contrast', 24);
+    expect(editor.getState().texts[0]).toMatchObject({
+      content: '标题',
+    });
+    expect(editor.getState().textToolState.mode).toBe('idle');
+
+    editor.commitAdjustment('contrast', 24);
+    editor.commitRotation(90);
+    editor.updateBrushSize(40);
+    editor.applyPreset('bw');
+
+    expect(editor.getState().texts[0]).toMatchObject({
+      content: '标题',
+    });
+    expect(editor.getState().adjustments.contrast).toBe(24);
+    expect(editor.getState().transform.rotation).toBe(90);
+    expect(editor.getState().brush.size).toBe(40);
+    expect(editor.getState().activePreset).toBe('bw');
+
+    editor.undo();
+    expect(editor.getState().activePreset).toBe('original');
+    expect(editor.getState().texts[0]).toMatchObject({
+      content: '标题',
+    });
+
+    editor.undo();
+    expect(editor.getState().brush.size).toBe(24);
+    expect(editor.getState().texts[0]).toMatchObject({
+      content: '标题',
+    });
+
+    editor.undo();
+    expect(editor.getState().transform.rotation).toBe(0);
+    expect(editor.getState().texts[0]).toMatchObject({
+      content: '标题',
+    });
+
+    editor.undo();
+    expect(editor.getState().adjustments.contrast).toBe(0);
+    expect(editor.getState().texts[0]).toMatchObject({
+      content: '标题',
+    });
+
+    editor.undo();
+    expect(editor.getState().texts).toEqual([]);
+  });
+
   it('uses the current timestamp as the exported image file name', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 3, 9, 15, 4, 5));

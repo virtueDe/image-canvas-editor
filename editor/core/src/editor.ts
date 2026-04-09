@@ -915,6 +915,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange(createStateFromImage(image));
   }
 
@@ -925,6 +926,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.setState({
       cropMode: true,
       draftCropRect: state.cropRect ?? fullImageRect(state.image),
@@ -1093,6 +1095,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange((currentState) => ({
       ...currentState,
       activeTool: 'brush',
@@ -1110,6 +1113,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange((currentState) => ({
       ...currentState,
       brush: {
@@ -1126,6 +1130,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange((currentState) => ({
       ...currentState,
       brush: {
@@ -1142,6 +1147,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange((currentState) => ({
       ...currentState,
       brush: {
@@ -1557,6 +1563,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange((currentState) => ({
       ...currentState,
       transform: {
@@ -1571,6 +1578,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange((currentState) => ({
       ...currentState,
       transform: {
@@ -1589,6 +1597,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange((currentState) => ({
       ...currentState,
       activePreset: preset,
@@ -1668,6 +1677,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.previewChange((currentState) => ({
       ...currentState,
       transform: {
@@ -1682,6 +1692,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange((currentState) => ({
       ...currentState,
       transform: {
@@ -1696,6 +1707,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.previewChange((currentState) => ({
       ...currentState,
       adjustments: {
@@ -1710,6 +1722,7 @@ export class ImageCanvasEditor {
       return;
     }
 
+    this.commitPendingTextEditing();
     this.commitChange((currentState) => ({
       ...currentState,
       adjustments: {
@@ -2273,6 +2286,14 @@ export class ImageCanvasEditor {
     }
 
     this.previewChange(updater);
+  }
+
+  private commitPendingTextEditing(): void {
+    const textState = normalizeTextState(this.store.getState());
+
+    if (textState.textToolState.mode === 'editing' || textState.textToolState.mode === 'inserting') {
+      this.finishTextEditing();
+    }
   }
 
   private stabilizeEmptyTextAnchor(text: TextItem, nextContent: string): TextItem {
