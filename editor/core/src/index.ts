@@ -11,7 +11,14 @@ export {
 } from './text-engine';
 export type { TextLayout, TextLayoutLine, TextMeasurement } from './text-engine';
 export type {
+  BrushCursor,
+  BrushSettings,
+  BrushStroke,
+  BrushStrokePoint,
+  BrushToolState,
+  BrushType,
   CropViewMetrics,
+  EditorCanvasTool,
   EditorAdjustments,
   EditorState,
   EditorTransform,

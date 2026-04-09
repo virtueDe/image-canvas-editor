@@ -1,4 +1,5 @@
 import { PRESET_FILTERS } from './presets';
+import { drawBrushStroke } from './brush-engine';
 import { normalizeTextRotation, resolveTextLayout } from './text-engine';
 import { normalizeTextState, type EditorAdjustments, type EditorState, type ImageResource, type Rect } from './types';
 import { clamp, createCanvas, fullImageRect } from './utils';
@@ -9,17 +10,28 @@ interface RenderOptions {
 
 const resolveCropRect = (image: ImageResource, rect: Rect | null): Rect => rect ?? fullImageRect(image);
 
+export const resolveProcessedCanvasSize = (
+  cropRect: Rect,
+  options: RenderOptions = {},
+): { width: number; height: number; scale: number } => {
+  const longestEdge = Math.max(cropRect.width, cropRect.height);
+  const scale =
+    options.maxDimension && longestEdge > options.maxDimension ? options.maxDimension / longestEdge : 1;
+
+  return {
+    width: Math.max(1, Math.round(cropRect.width * scale)),
+    height: Math.max(1, Math.round(cropRect.height * scale)),
+    scale,
+  };
+};
+
 const drawPresetRegion = (
   image: ImageResource,
   cropRect: Rect,
   preset: EditorState['activePreset'],
   options: RenderOptions,
 ): HTMLCanvasElement => {
-  const longestEdge = Math.max(cropRect.width, cropRect.height);
-  const scale =
-    options.maxDimension && longestEdge > options.maxDimension ? options.maxDimension / longestEdge : 1;
-  const targetWidth = Math.max(1, Math.round(cropRect.width * scale));
-  const targetHeight = Math.max(1, Math.round(cropRect.height * scale));
+  const { width: targetWidth, height: targetHeight } = resolveProcessedCanvasSize(cropRect, options);
   const canvas = createCanvas(targetWidth, targetHeight);
   const ctx = canvas.getContext('2d');
 
@@ -77,6 +89,30 @@ const applyAdjustments = (canvas: HTMLCanvasElement, adjustments: EditorAdjustme
   }
 
   ctx.putImageData(imageData, 0, 0);
+};
+
+const drawBrushStrokes = (canvas: HTMLCanvasElement, state: EditorState, cropRect: Rect): void => {
+  const strokes = state.brushStrokes ?? [];
+
+  if (!state.image || strokes.length === 0) {
+    return;
+  }
+
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('无法获取画笔渲染上下文');
+  }
+
+  for (const stroke of strokes) {
+    drawBrushStroke(ctx, stroke, {
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      cropRect,
+      imageWidth: state.image.width,
+      imageHeight: state.image.height,
+    });
+  }
 };
 
 const transformCanvas = (
@@ -161,6 +197,7 @@ export const createProcessedCanvas = (
   const workingCanvas = drawPresetRegion(state.image, cropRect, state.activePreset, options);
 
   applyAdjustments(workingCanvas, state.adjustments);
+  drawBrushStrokes(workingCanvas, state, cropRect);
 
   return {
     canvas: (() => {

@@ -15,6 +15,7 @@ const baseState = (): EditorState => ({
   cropRect: null,
   draftCropRect: null,
   cropMode: false,
+  activeTool: 'navigate',
   textOverlay: {
     text: '第一段',
     xRatio: 0.25,
@@ -44,6 +45,16 @@ const baseState = (): EditorState => ({
     selectionStart: 3,
     selectionEnd: 3,
     composing: false,
+  },
+  brush: {
+    type: 'brush',
+    color: '#E9C083',
+    size: 24,
+    hardness: 0.68,
+  },
+  brushStrokes: [],
+  brushToolState: {
+    mode: 'idle',
   },
   adjustments: { contrast: 0, exposure: 0, highlights: 0 },
   transform: { rotation: 0, flipX: false, flipY: false },
@@ -129,9 +140,15 @@ describe('draft store with multi-text schema', () => {
     const payload = JSON.parse(rawDraft ?? '');
     expect(payload).toMatchObject({
       schemaVersion: 2,
+      activeTool: 'navigate',
       texts: baseState().texts,
       activeTextId: 'text-1',
       textToolState: baseState().textToolState,
+      brush: baseState().brush,
+      brushStrokes: [],
+      brushToolState: {
+        mode: 'idle',
+      },
     });
     expect('textOverlay' in payload).toBe(false);
   });

@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "0.1.0",
+  "feature": "brush-layer",
+  "createdAt": "2026-04-09T00:00:00Z",
+  "updatedAt": "2026-04-09T09:51:30Z",
+  "status": "completed",
+  "parameters": {
+    "skipUI": false,
+    "skipDeploy": true,
+    "quick": false,
+    "hitlLevel": "auto",
+    "roles": "full"
+  },
+  "stages": {
+    "1": {
+      "name": "planning",
+      "status": "completed",
+      "startTime": "2026-04-09T00:00:00Z",
+      "endTime": "2026-04-09T00:20:00Z",
+      "retryCount": 0,
+      "maxRetries": 2,
+      "failureReason": null,
+      "artifacts": [
+        "prd.md",
+        "architecture.md",
+        "ui-spec.md"
+      ],
+      "gateResults": {}
+    },
+    "2": {
+      "name": "review",
+      "status": "completed",
+      "startTime": "2026-04-09T00:20:00Z",
+      "endTime": "2026-04-09T00:40:00Z",
+      "retryCount": 0,
+      "maxRetries": 2,
+      "failureReason": null,
+      "artifacts": [
+        "tech-review.md",
+        "tasks.md"
+      ],
+      "gateResults": {}
+    },
+    "3": {
+      "name": "development",
+      "status": "completed",
+      "startTime": "2026-04-09T00:40:00Z",
+      "endTime": "2026-04-09T09:51:30Z",
+      "retryCount": 0,
+      "maxRetries": 2,
+      "failureReason": null,
+      "artifacts": [
+        "qa-report.md"
+      ],
+      "gateResults": {
+        "gate0": {
+          "passed": true,
+          "executedAt": "2026-04-09T09:20:00Z"
+        },
+        "gate1": {
+          "passed": true,
+          "executedAt": "2026-04-09T09:51:30Z"
+        }
+      }
+    },
+    "4": {
+      "name": "deployment",
+      "status": "skipped",
+      "startTime": null,
+      "endTime": "2026-04-09T09:45:00Z",
+      "retryCount": 0,
+      "maxRetries": 2,
+      "failureReason": null,
+      "artifacts": [
+        "deploy-report.md"
+      ],
+      "gateResults": {}
+    }
+  },
+  "qualityGates": {
+    "gate0": {
+      "status": "completed",
+      "passed": true,
+      "checks": [
+        "pnpm typecheck",
+        "pnpm build"
+      ],
+      "executedAt": "2026-04-09T09:20:00Z"
+    },
+    "gate1": {
+      "status": "completed",
+      "passed": true,
+      "checks": [
+        "pnpm exec vitest run editor/core/src/editor-workflow.test.ts editor/core/src/renderer.test.ts editor/core/src/image-processing.test.ts"
+      ],
+      "executedAt": "2026-04-09T09:51:30Z"
+    },
+    "gate2": {
+      "status": "skipped",
+      "passed": null,
+      "checks": [],
+      "executedAt": null
+    }
+  },
+  "metrics": {
+    "totalDuration": 35490,
+    "stageTimings": {
+      "1": 1200,
+      "2": 1200,
+      "3": 33090
+    },
+    "gatePassRate": 1,
+    "retryTotal": 0
+  },
+  "plugins": [],
+  "humanInterventions": [
+    {
+      "at": "2026-04-09T00:00:00Z",
+      "type": "manual-harness-fallback",
+      "reason": "当前环境缺少 boss Harness 依赖 bash/jq，阶段状态改为手动维护"
+    }
+  ]
+}

@@ -12,6 +12,25 @@ export const clampViewportOffset = (
   return clamp(offset, -maxOffset, maxOffset);
 };
 
+export const softenViewportOffset = (
+  offset: number,
+  displaySize: number,
+  canvasSize: number,
+  resistance: number,
+): number => {
+  const maxOffset = Math.abs(canvasSize - displaySize) / 2;
+
+  if (offset < -maxOffset) {
+    return -maxOffset - (-maxOffset - offset) * resistance;
+  }
+
+  if (offset > maxOffset) {
+    return maxOffset + (offset - maxOffset) * resistance;
+  }
+
+  return offset;
+};
+
 export const fullImageRect = (image: ImageResource): Rect => ({
   x: 0,
   y: 0,

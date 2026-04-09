@@ -1,4 +1,4 @@
-import { createProcessedCanvas } from './image-processing';
+import { createProcessedCanvas, resolveProcessedCanvasSize } from './image-processing';
 import { createLocalDraftStore, type DraftStore } from './persistence';
 import { CanvasRenderer } from './renderer';
 import { EditorStore } from './store';
@@ -10,9 +10,18 @@ import {
   type HistorySnapshot,
 } from './history';
 import {
+  cloneBrushStrokes,
+  createDefaultBrushSettings,
+  createIdleBrushToolState,
   createIdleTextToolState,
+  normalizeBrushSettings,
+  normalizeBrushToolState,
   normalizeTextState,
   textItemToTextOverlay,
+  type BrushStroke,
+  type BrushStrokePoint,
+  type BrushToolState,
+  type BrushType,
   type CropViewMetrics,
   type EditorState,
   type FilterPreset,
@@ -27,7 +36,6 @@ import {
   isPointInRotatedTextBlock,
   normalizeTextRotation,
   resolveEmptyTextAnchorCompensation,
-  resolveDragHandleScreenRect,
   resolveTextRotateHandleScreenPoint,
   resolveTextScreenRect,
 } from './text-engine';
@@ -40,6 +48,7 @@ import {
   normalizeRect,
   pointInRect,
   readFileAsDataUrl,
+  softenViewportOffset,
 } from './utils';
 import {
   createDefaultTextOverlay,
@@ -76,15 +85,15 @@ type PreviewInteraction =
       anchorClientX: number;
       anchorClientY: number;
       startAngle: number;
+    }
+  | {
+      mode: 'drawing-brush';
+      strokeId: string;
     };
 
 type TextHitTarget =
   | {
       type: 'body';
-      textId: string;
-    }
-  | {
-      type: 'move-handle';
       textId: string;
     }
   | {
@@ -105,8 +114,28 @@ const DEFAULT_VIEWPORT = {
 const MIN_VIEWPORT_ZOOM = 1;
 const MAX_VIEWPORT_ZOOM = 4;
 const VIEWPORT_ZOOM_STEP = 0.2;
+const VIEWPORT_WHEEL_SENSITIVITY = 0.0015;
+const VIEWPORT_PAN_OVERSCROLL_RESISTANCE = 0.2;
+const WHEEL_LINE_PIXELS = 16;
+const WHEEL_DELTA_LINE = 1;
+const WHEEL_DELTA_PAGE = 2;
 const HISTORY_LIMIT = 100;
 const ROTATED_TEXT_HANDLE_SIZE = 24;
+const PREVIEW_PROCESSED_MAX_DIMENSION = 1600;
+const MIN_BRUSH_POINT_DISTANCE_RATIO = 0.0008;
+
+const padDateSegment = (value: number): string => value.toString().padStart(2, '0');
+
+const createTimestampFileName = (extension: string, date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = padDateSegment(date.getMonth() + 1);
+  const day = padDateSegment(date.getDate());
+  const hours = padDateSegment(date.getHours());
+  const minutes = padDateSegment(date.getMinutes());
+  const seconds = padDateSegment(date.getSeconds());
+
+  return `${year}${month}${day}${hours}${minutes}${seconds}${extension}`;
+};
 
 const createEditingTextToolState = (textId: string, caretIndex: number): TextToolState => ({
   mode: 'editing',
@@ -115,6 +144,11 @@ const createEditingTextToolState = (textId: string, caretIndex: number): TextToo
   selectionStart: caretIndex,
   selectionEnd: caretIndex,
   composing: false,
+});
+
+const createDrawingBrushToolState = (strokeId: string): BrushToolState => ({
+  mode: 'drawing',
+  strokeId,
 });
 
 const createTextItem = (id: string, xRatio: number, yRatio: number, content = ''): TextItem => {
@@ -138,10 +172,15 @@ export const createInitialEditorState = (): EditorState => ({
   cropRect: null,
   draftCropRect: null,
   cropMode: false,
+  activeTool: 'navigate',
   textOverlay: null,
   texts: [],
   activeTextId: null,
   textToolState: createIdleTextToolState(),
+  brush: createDefaultBrushSettings(),
+  brushStrokes: [],
+  brushToolState: createIdleBrushToolState(),
+  brushCursor: null,
   adjustments: {
     contrast: 0,
     exposure: 0,
@@ -208,6 +247,26 @@ const getPointerPreviewRatio = (
     metrics.displayHeight > 0 ? clamp((point.canvasY - metrics.displayY) / metrics.displayHeight, 0, 1) : 0.5,
 });
 
+const resolvePreviewSourcePoint = (
+  point: { canvasX: number; canvasY: number },
+  metrics: PreviewViewMetrics,
+): { sourceX: number; sourceY: number } => ({
+  sourceX:
+    metrics.displayWidth > 0 ? ((point.canvasX - metrics.displayX) / metrics.displayWidth) * metrics.sourceWidth : 0,
+  sourceY:
+    metrics.displayHeight > 0
+      ? ((point.canvasY - metrics.displayY) / metrics.displayHeight) * metrics.sourceHeight
+      : 0,
+});
+
+const resolveCropRectForState = (state: EditorState): Rect | null => {
+  if (!state.image) {
+    return null;
+  }
+
+  return state.cropRect ?? fullImageRect(state.image);
+};
+
 const createCenteredRect = (centerX: number, centerY: number, size: number): Rect => ({
   x: centerX - size / 2,
   y: centerY - size / 2,
@@ -241,7 +300,6 @@ const resolveTextHitTarget = (
     );
 
     if (activeTextRect) {
-      const moveHandleRect = resolveDragHandleScreenRect(activeTextRect);
       const rotatedHandlePoint = resolveTextRotateHandleScreenPoint(
         activeText,
         metrics.sourceWidth,
@@ -252,13 +310,6 @@ const resolveTextHitTarget = (
         rotatedHandlePoint
           ? createCenteredRect(rotatedHandlePoint.x, rotatedHandlePoint.y, ROTATED_TEXT_HANDLE_SIZE)
           : null;
-
-      if (pointInRect(pointX, pointY, moveHandleRect)) {
-        return {
-          type: 'move-handle',
-          textId: activeText.id,
-        };
-      }
 
       if (rotateHandleRect && pointInRect(pointX, pointY, rotateHandleRect)) {
         return {
@@ -343,6 +394,15 @@ export class ImageCanvasEditor {
   private undoStack: HistorySnapshot[] = [];
   private redoStack: HistorySnapshot[] = [];
   private pendingHistorySnapshot: HistorySnapshot | null = null;
+  private pendingWheelViewportUpdate:
+    | {
+        zoom: number;
+        clientX: number;
+        clientY: number;
+        metrics: PreviewViewMetrics;
+      }
+    | null = null;
+  private wheelFrameRequestId: number | null = null;
   private cropInteraction: CropInteraction = { mode: 'idle' };
   private previewInteraction: PreviewInteraction = { mode: 'idle' };
   private resizeObserver: ResizeObserver | null = null;
@@ -370,6 +430,30 @@ export class ImageCanvasEditor {
       const textState = normalizeTextState(state);
       const editingTextId = textState.textToolState.mode === 'editing' ? textState.textToolState.textId : null;
 
+      if (state.activeTool === 'brush') {
+        if (editingTextId) {
+          this.finishTextEditing();
+        }
+
+        if (normalizeTextState(this.store.getState()).activeTextId) {
+          this.clearTextSelection();
+        }
+
+        if (!isPointOnPreviewImage(point, previewMetrics)) {
+          return;
+        }
+
+        const brushPoint = this.resolveBrushPointFromPreview(point, previewMetrics);
+
+        if (!brushPoint) {
+          return;
+        }
+
+        canvas.setPointerCapture(event.pointerId);
+        this.beginBrushStroke(brushPoint);
+        return;
+      }
+
       if (textState.textToolState.mode === 'inserting') {
         if (isPointOnPreviewImage(point, previewMetrics)) {
           const nextPosition = getPointerPreviewRatio(point, previewMetrics);
@@ -381,27 +465,18 @@ export class ImageCanvasEditor {
 
       const hitTarget = resolveTextHitTarget(state, previewMetrics, point.canvasX, point.canvasY);
 
-      if (editingTextId && !hitTarget) {
-        this.finishTextEditing();
-        return;
-      }
-
       if (hitTarget) {
-        const shouldFinishCurrentEditing =
-          editingTextId !== null &&
-          (hitTarget.type !== 'body' || hitTarget.textId !== editingTextId);
+        const shouldFinishCurrentEditing = editingTextId !== null && editingTextId !== hitTarget.textId;
 
         if (shouldFinishCurrentEditing) {
           this.finishTextEditing();
         }
 
-        if (hitTarget.type === 'move-handle') {
-          canvas.setPointerCapture(event.pointerId);
-          this.beginTextDrag(hitTarget.textId, event.clientX, event.clientY, previewMetrics);
-          return;
-        }
-
         if (hitTarget.type === 'rotate-handle') {
+          if (editingTextId === hitTarget.textId) {
+            this.finishTextEditing();
+          }
+
           canvas.setPointerCapture(event.pointerId);
           this.beginTextRotation(
             hitTarget.textId,
@@ -417,8 +492,22 @@ export class ImageCanvasEditor {
           return;
         }
 
-        this.focusText(hitTarget.textId);
+        if (textState.activeTextId !== hitTarget.textId) {
+          this.selectText(hitTarget.textId);
+          return;
+        }
+
+        canvas.setPointerCapture(event.pointerId);
+        this.beginTextDrag(hitTarget.textId, event.clientX, event.clientY, previewMetrics);
         return;
+      }
+
+      if (editingTextId) {
+        this.finishTextEditing();
+      }
+
+      if (normalizeTextState(this.store.getState()).activeTextId) {
+        this.clearTextSelection();
       }
 
       canvas.setPointerCapture(event.pointerId);
@@ -426,8 +515,8 @@ export class ImageCanvasEditor {
         mode: 'panning',
         startClientX: event.clientX,
         startClientY: event.clientY,
-        offsetX: state.viewport.offsetX,
-        offsetY: state.viewport.offsetY,
+        offsetX: this.store.getState().viewport.offsetX,
+        offsetY: this.store.getState().viewport.offsetY,
       };
       this.syncCanvasCursor();
       return;
@@ -483,8 +572,39 @@ export class ImageCanvasEditor {
     const canvas = this.canvas;
     const state = this.store.getState();
     const cropMetrics = this.renderer?.getCropViewMetrics() ?? null;
+    const previewMetrics = this.renderer?.getPreviewViewMetrics() ?? null;
 
     if (!canvas || !state.image) {
+      return;
+    }
+
+    if (this.previewInteraction.mode === 'drawing-brush' && !state.cropMode && previewMetrics) {
+      const point = getPointerOnPreview(event, canvas);
+
+      if (!isPointOnPreviewImage(point, previewMetrics)) {
+        return;
+      }
+
+      const brushPoint = this.resolveBrushPointFromPreview(point, previewMetrics);
+
+      if (!brushPoint) {
+        return;
+      }
+
+      this.updateBrushCursor(brushPoint);
+      this.extendBrushStroke(brushPoint);
+      return;
+    }
+
+    if (!state.cropMode && state.activeTool === 'brush' && previewMetrics) {
+      const point = getPointerOnPreview(event, canvas);
+
+      if (!isPointOnPreviewImage(point, previewMetrics)) {
+        this.clearBrushCursor();
+        return;
+      }
+
+      this.updateBrushCursor(this.resolveBrushPointFromPreview(point, previewMetrics));
       return;
     }
 
@@ -511,7 +631,7 @@ export class ImageCanvasEditor {
       this.setViewport({
         offsetX: this.previewInteraction.offsetX + (event.clientX - this.previewInteraction.startClientX),
         offsetY: this.previewInteraction.offsetY + (event.clientY - this.previewInteraction.startClientY),
-      });
+      }, { overscrollResistance: VIEWPORT_PAN_OVERSCROLL_RESISTANCE });
       return;
     }
 
@@ -617,18 +737,48 @@ export class ImageCanvasEditor {
     }
 
     event.preventDefault();
-    const nextZoom = this.clampZoom(
-      state.viewport.zoom + (event.deltaY < 0 ? VIEWPORT_ZOOM_STEP : -VIEWPORT_ZOOM_STEP),
-    );
+    const wheelDelta = this.normalizeWheelDelta(event.deltaY, event.deltaMode, metrics.canvasHeight);
+    const baseZoom = this.pendingWheelViewportUpdate?.zoom ?? state.viewport.zoom;
+    const nextZoom = this.clampZoom(baseZoom * Math.exp(-wheelDelta * VIEWPORT_WHEEL_SENSITIVITY));
 
-    this.updateViewportZoom(nextZoom, event.clientX, event.clientY, metrics);
+    if (nextZoom === baseZoom) {
+      return;
+    }
+
+    this.pendingWheelViewportUpdate = {
+      zoom: nextZoom,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      metrics,
+    };
+    this.scheduleWheelViewportUpdate();
   };
 
-  private readonly onCanvasDoubleClick = (): void => {
+  private readonly onCanvasDoubleClick = (event: MouseEvent): void => {
+    const canvas = this.canvas;
     const state = this.store.getState();
+    const previewMetrics = this.renderer?.getPreviewViewMetrics() ?? null;
 
-    if (!state.image || state.cropMode) {
+    if (!canvas || !state.image || state.cropMode) {
       return;
+    }
+
+    if (previewMetrics && state.activeTool !== 'brush') {
+      const point = getPointerOnPreview(event as PointerEvent, canvas);
+      const hitTarget = resolveTextHitTarget(state, previewMetrics, point.canvasX, point.canvasY);
+
+      if (hitTarget?.type === 'body') {
+        const currentTextState = normalizeTextState(this.store.getState());
+        const currentToolState = currentTextState.textToolState;
+        const editingTextId = currentToolState.mode === 'editing' ? currentToolState.textId : null;
+
+        if (editingTextId && editingTextId !== hitTarget.textId) {
+          this.finishTextEditing();
+        }
+
+        this.focusText(hitTarget.textId);
+        return;
+      }
     }
 
     this.resetViewport();
@@ -654,7 +804,28 @@ export class ImageCanvasEditor {
       return;
     }
 
+    if (previewInteraction.mode === 'drawing-brush') {
+      this.finishBrushStroke();
+      return;
+    }
+
+    if (previewInteraction.mode === 'panning') {
+      const { viewport } = this.store.getState();
+      this.setViewport({
+        offsetX: viewport.offsetX,
+        offsetY: viewport.offsetY,
+      });
+    }
+
     this.syncCanvasCursor();
+  };
+
+  private readonly onCanvasPointerLeave = (): void => {
+    const state = this.store.getState();
+
+    if (state.activeTool === 'brush' && this.previewInteraction.mode !== 'drawing-brush') {
+      this.clearBrushCursor();
+    }
   };
 
   constructor(options: ImageCanvasEditorOptions = {}) {
@@ -674,6 +845,7 @@ export class ImageCanvasEditor {
 
     canvas.addEventListener('pointerdown', this.onCanvasPointerDown);
     canvas.addEventListener('pointermove', this.onCanvasPointerMove);
+    canvas.addEventListener('pointerleave', this.onCanvasPointerLeave);
     canvas.addEventListener('pointerup', this.stopCropInteraction);
     canvas.addEventListener('pointercancel', this.stopCropInteraction);
     canvas.addEventListener('wheel', this.onCanvasWheel, { passive: false });
@@ -698,6 +870,7 @@ export class ImageCanvasEditor {
 
     this.canvas.removeEventListener('pointerdown', this.onCanvasPointerDown);
     this.canvas.removeEventListener('pointermove', this.onCanvasPointerMove);
+    this.canvas.removeEventListener('pointerleave', this.onCanvasPointerLeave);
     this.canvas.removeEventListener('pointerup', this.stopCropInteraction);
     this.canvas.removeEventListener('pointercancel', this.stopCropInteraction);
     this.canvas.removeEventListener('wheel', this.onCanvasWheel);
@@ -705,6 +878,7 @@ export class ImageCanvasEditor {
     window.removeEventListener('resize', this.onWindowResize);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.cancelPendingWheelViewportUpdate();
     this.cropInteraction = { mode: 'idle' };
     this.previewInteraction = { mode: 'idle' };
     this.canvas = null;
@@ -813,7 +987,10 @@ export class ImageCanvasEditor {
 
     this.setState((currentState) => ({
       ...currentState,
+      activeTool: 'text',
       textToolState: { mode: 'inserting' },
+      brushToolState: createIdleBrushToolState(),
+      brushCursor: null,
     }));
   }
 
@@ -834,6 +1011,7 @@ export class ImageCanvasEditor {
 
       return {
         ...currentState,
+        activeTool: 'text',
         ...this.createTextStatePatch(nextTexts, textId, createEditingTextToolState(textId, text.content.length)),
       };
     });
@@ -849,11 +1027,127 @@ export class ImageCanvasEditor {
 
     this.setState((currentState) => ({
       ...currentState,
+      activeTool: 'text',
       ...this.createTextStatePatch(
         normalizeTextState(currentState).texts,
         textId,
         createEditingTextToolState(textId, activeText.content.length),
       ),
+    }));
+  }
+
+  selectText(textId: string): void {
+    const state = normalizeTextState(this.store.getState());
+    const activeText = state.texts.find((text) => text.id === textId);
+
+    if (this.store.getState().cropMode || !activeText) {
+      return;
+    }
+
+    this.setState((currentState) => ({
+      ...currentState,
+      activeTool: 'text',
+      ...this.createTextStatePatch(normalizeTextState(currentState).texts, textId, createIdleTextToolState()),
+    }));
+  }
+
+  clearTextSelection(): void {
+    if (this.store.getState().cropMode) {
+      return;
+    }
+
+    this.setState((currentState) => ({
+      ...currentState,
+      ...this.createTextStatePatch(normalizeTextState(currentState).texts, null, createIdleTextToolState()),
+    }));
+  }
+
+  selectBrushTool(type?: BrushType): void {
+    const state = this.store.getState();
+
+    if (state.cropMode || !state.image) {
+      return;
+    }
+
+    if (normalizeTextState(state).textToolState.mode === 'editing') {
+      this.finishTextEditing();
+    }
+
+    this.setState((currentState) => ({
+      ...currentState,
+      activeTool: 'brush',
+      brush: {
+        ...normalizeBrushSettings(currentState.brush),
+        ...(type ? { type } : {}),
+      },
+      brushToolState: createIdleBrushToolState(),
+      brushCursor: currentState.brushCursor ?? null,
+      ...this.createTextStatePatch(normalizeTextState(currentState).texts, null, createIdleTextToolState()),
+    }));
+  }
+
+  updateBrushType(type: BrushType): void {
+    const state = this.store.getState();
+
+    if (state.cropMode) {
+      return;
+    }
+
+    this.commitChange((currentState) => ({
+      ...currentState,
+      activeTool: 'brush',
+      brush: {
+        ...normalizeBrushSettings(currentState.brush),
+        type,
+      },
+    }));
+  }
+
+  updateBrushColor(color: string): void {
+    const state = this.store.getState();
+
+    if (state.cropMode) {
+      return;
+    }
+
+    this.commitChange((currentState) => ({
+      ...currentState,
+      brush: {
+        ...normalizeBrushSettings(currentState.brush),
+        color,
+      },
+    }));
+  }
+
+  updateBrushSize(size: number): void {
+    const state = this.store.getState();
+
+    if (state.cropMode) {
+      return;
+    }
+
+    this.commitChange((currentState) => ({
+      ...currentState,
+      brush: {
+        ...normalizeBrushSettings(currentState.brush),
+        size,
+      },
+    }));
+  }
+
+  updateBrushHardness(hardness: number): void {
+    const state = this.store.getState();
+
+    if (state.cropMode) {
+      return;
+    }
+
+    this.commitChange((currentState) => ({
+      ...currentState,
+      brush: {
+        ...normalizeBrushSettings(currentState.brush),
+        hardness,
+      },
     }));
   }
 
@@ -1474,10 +1768,15 @@ export class ImageCanvasEditor {
     this.commitChange({
       image: draft.image,
       cropRect: draft.cropRect,
+      activeTool: draft.activeTool,
       textOverlay: draft.textOverlay ?? null,
       texts: draft.texts,
       activeTextId: draft.activeTextId,
       textToolState: draft.textToolState,
+      brush: draft.brush,
+      brushStrokes: draft.brushStrokes,
+      brushToolState: draft.brushToolState,
+      brushCursor: null,
       draftCropRect: null,
       cropMode: false,
       adjustments: draft.adjustments,
@@ -1492,9 +1791,12 @@ export class ImageCanvasEditor {
     return processed?.canvas.toDataURL(type, quality) ?? null;
   }
 
+  getRenderFps(): number | null {
+    return this.renderer?.getFramesPerSecond() ?? null;
+  }
+
   getSuggestedFileName(extension = '.png'): string {
-    const fileName = (this.store.getState().image?.name ?? 'edited-image').replace(/\.[a-zA-Z0-9]+$/, '');
-    return `${fileName}-edited${extension}`;
+    return createTimestampFileName(extension);
   }
 
   private setState(updater: Partial<EditorState> | ((currentState: EditorState) => EditorState)): void {
@@ -1506,6 +1808,50 @@ export class ImageCanvasEditor {
     this.undoStack = [];
     this.redoStack = [];
     this.clearPendingPreview();
+  }
+
+  private scheduleWheelViewportUpdate(): void {
+    if (this.wheelFrameRequestId !== null) {
+      return;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      this.wheelFrameRequestId = window.requestAnimationFrame(() => {
+        this.wheelFrameRequestId = null;
+        this.flushPendingWheelViewportUpdate();
+      });
+      return;
+    }
+
+    this.flushPendingWheelViewportUpdate();
+  }
+
+  private flushPendingWheelViewportUpdate(): void {
+    if (!this.pendingWheelViewportUpdate) {
+      return;
+    }
+
+    const pendingUpdate = this.pendingWheelViewportUpdate;
+    this.pendingWheelViewportUpdate = null;
+    this.updateViewportZoom(
+      pendingUpdate.zoom,
+      pendingUpdate.clientX,
+      pendingUpdate.clientY,
+      pendingUpdate.metrics,
+    );
+  }
+
+  private cancelPendingWheelViewportUpdate(): void {
+    if (
+      this.wheelFrameRequestId !== null &&
+      typeof window !== 'undefined' &&
+      typeof window.cancelAnimationFrame === 'function'
+    ) {
+      window.cancelAnimationFrame(this.wheelFrameRequestId);
+    }
+
+    this.wheelFrameRequestId = null;
+    this.pendingWheelViewportUpdate = null;
   }
 
   private clearPendingPreview(): void {
@@ -1727,15 +2073,164 @@ export class ImageCanvasEditor {
     }));
   }
 
+  private beginBrushStroke(point: BrushStrokePoint): void {
+    const state = this.store.getState();
+    const brush = normalizeBrushSettings(state.brush);
+    const strokeId = this.createBrushStrokeId(state.brushStrokes ?? []);
+    const stroke: BrushStroke = {
+      id: strokeId,
+      type: brush.type,
+      color: brush.color,
+      size: brush.size,
+      hardness: brush.hardness,
+      points: [point],
+    };
+
+    this.previewInteraction = {
+      mode: 'drawing-brush',
+      strokeId,
+    };
+    this.seedPreviewBaselineFromCommittedState();
+    this.setState((currentState) => ({
+      ...currentState,
+      brushToolState: createDrawingBrushToolState(strokeId),
+      brushCursor: point,
+      brushStrokes: [...(currentState.brushStrokes ?? []), stroke],
+    }));
+  }
+
+  private extendBrushStroke(point: BrushStrokePoint): void {
+    const interaction = this.previewInteraction;
+
+    if (interaction.mode !== 'drawing-brush') {
+      return;
+    }
+
+    this.previewChange((currentState) => {
+      const nextBrushStrokes = (currentState.brushStrokes ?? []).map((stroke) => {
+        if (stroke.id !== interaction.strokeId) {
+          return stroke;
+        }
+
+        const previousPoint = stroke.points[stroke.points.length - 1];
+
+        if (
+          previousPoint &&
+          Math.hypot(point.xRatio - previousPoint.xRatio, point.yRatio - previousPoint.yRatio) <
+            MIN_BRUSH_POINT_DISTANCE_RATIO
+        ) {
+          return stroke;
+        }
+
+        return {
+          ...stroke,
+          points: [...stroke.points, point],
+        };
+      });
+
+      return {
+        ...currentState,
+        brushCursor: point,
+        brushStrokes: nextBrushStrokes,
+      };
+    });
+  }
+
+  private finishBrushStroke(): void {
+    const state = this.store.getState();
+
+    if ((state.brushToolState?.mode ?? 'idle') !== 'drawing') {
+      return;
+    }
+
+    this.commitPreviewState((previewState) => ({
+      ...previewState,
+      brushToolState: createIdleBrushToolState(),
+    }));
+  }
+
+  private resolveBrushPointFromPreview(
+    point: { canvasX: number; canvasY: number },
+    previewMetrics: PreviewViewMetrics,
+  ): BrushStrokePoint | null {
+    const state = this.store.getState();
+    const cropRect = resolveCropRectForState(state);
+
+    if (!state.image || !cropRect) {
+      return null;
+    }
+
+    const processedSize = resolveProcessedCanvasSize(cropRect, {
+      maxDimension: PREVIEW_PROCESSED_MAX_DIMENSION,
+    });
+    const previewSourcePoint = resolvePreviewSourcePoint(point, previewMetrics);
+    const radians = (state.transform.rotation * Math.PI) / 180;
+    const transformedX = previewSourcePoint.sourceX - previewMetrics.sourceWidth / 2;
+    const transformedY = previewSourcePoint.sourceY - previewMetrics.sourceHeight / 2;
+    const unflippedX = state.transform.flipX ? -transformedX : transformedX;
+    const unflippedY = state.transform.flipY ? -transformedY : transformedY;
+    const unrotatedX = unflippedX * Math.cos(-radians) - unflippedY * Math.sin(-radians);
+    const unrotatedY = unflippedX * Math.sin(-radians) + unflippedY * Math.cos(-radians);
+    const sourceX = unrotatedX + processedSize.width / 2;
+    const sourceY = unrotatedY + processedSize.height / 2;
+
+    if (
+      sourceX < 0 ||
+      sourceY < 0 ||
+      sourceX > processedSize.width ||
+      sourceY > processedSize.height
+    ) {
+      return null;
+    }
+
+    return {
+      xRatio: clamp((cropRect.x + (sourceX / processedSize.width) * cropRect.width) / state.image.width, 0, 1),
+      yRatio: clamp((cropRect.y + (sourceY / processedSize.height) * cropRect.height) / state.image.height, 0, 1),
+    };
+  }
+
+  private updateBrushCursor(point: BrushStrokePoint | null): void {
+    const currentCursor = this.store.getState().brushCursor ?? null;
+
+    if (
+      (currentCursor === null && point === null) ||
+      (currentCursor !== null &&
+        point !== null &&
+        currentCursor.xRatio === point.xRatio &&
+        currentCursor.yRatio === point.yRatio)
+    ) {
+      return;
+    }
+
+    this.setState({
+      brushCursor: point,
+    });
+  }
+
+  private clearBrushCursor(): void {
+    if (this.store.getState().brushCursor === null) {
+      return;
+    }
+
+    this.setState({
+      brushCursor: null,
+    });
+  }
+
   private synchronizeTextState(state: EditorState): EditorState {
     const normalizedTextState = normalizeTextState(state);
+    const brushStrokes = cloneBrushStrokes(state.brushStrokes ?? []);
 
     return {
       ...state,
+      activeTool: state.activeTool ?? 'navigate',
       textOverlay: normalizedTextState.textOverlay,
       texts: normalizedTextState.texts,
       activeTextId: normalizedTextState.activeTextId,
       textToolState: normalizedTextState.textToolState,
+      brush: normalizeBrushSettings(state.brush),
+      brushStrokes,
+      brushToolState: normalizeBrushToolState(state.brushToolState, brushStrokes),
     };
   }
 
@@ -1744,11 +2239,12 @@ export class ImageCanvasEditor {
     activeTextId: string | null,
     textToolState: TextToolState,
   ): Pick<EditorState, 'textOverlay' | 'texts' | 'activeTextId' | 'textToolState'> {
+    const activeText = activeTextId ? texts.find((text) => text.id === activeTextId) ?? null : null;
     const normalizedTextState = normalizeTextState({
       texts,
       activeTextId,
       textToolState,
-      textOverlay: textItemToTextOverlay(texts.find((text) => text.id === activeTextId) ?? texts[0] ?? null),
+      textOverlay: textItemToTextOverlay(activeText),
     });
 
     return {
@@ -1835,17 +2331,35 @@ export class ImageCanvasEditor {
     return textId;
   }
 
-  private setViewport(nextViewport: Partial<EditorState['viewport']>): void {
+  private createBrushStrokeId(brushStrokes: BrushStroke[]): string {
+    let strokeId = `brush-stroke-${this.nextTextId}`;
+
+    while (brushStrokes.some((stroke) => stroke.id === strokeId)) {
+      this.nextTextId += 1;
+      strokeId = `brush-stroke-${this.nextTextId}`;
+    }
+
+    this.nextTextId += 1;
+    return strokeId;
+  }
+
+  private setViewport(
+    nextViewport: Partial<EditorState['viewport']>,
+    options: { overscrollResistance?: number } = {},
+  ): void {
     this.setState((currentState) => ({
       ...currentState,
       viewport: this.normalizeViewport({
         ...currentState.viewport,
         ...nextViewport,
-      }),
+      }, options),
     }));
   }
 
-  private normalizeViewport(viewport: EditorState['viewport']): EditorState['viewport'] {
+  private normalizeViewport(
+    viewport: EditorState['viewport'],
+    options: { overscrollResistance?: number } = {},
+  ): EditorState['viewport'] {
     const zoom = this.clampZoom(viewport.zoom);
     const metrics = this.renderer?.getPreviewViewMetrics() ?? null;
 
@@ -1864,20 +2378,29 @@ export class ImageCanvasEditor {
         offsetY: viewport.offsetY,
       },
       metrics,
+      options,
     );
   }
 
   private clampViewportOffsets(
     viewport: EditorState['viewport'],
     metrics: PreviewViewMetrics,
+    options: { overscrollResistance?: number } = {},
   ): EditorState['viewport'] {
     const width = metrics.baseDisplayWidth * viewport.zoom;
     const height = metrics.baseDisplayHeight * viewport.zoom;
+    const overscrollResistance = options.overscrollResistance ?? 0;
 
     return {
       zoom: viewport.zoom,
-      offsetX: clampViewportOffset(viewport.offsetX, width, metrics.canvasWidth),
-      offsetY: clampViewportOffset(viewport.offsetY, height, metrics.canvasHeight),
+      offsetX:
+        overscrollResistance > 0
+          ? softenViewportOffset(viewport.offsetX, width, metrics.canvasWidth, overscrollResistance)
+          : clampViewportOffset(viewport.offsetX, width, metrics.canvasWidth),
+      offsetY:
+        overscrollResistance > 0
+          ? softenViewportOffset(viewport.offsetY, height, metrics.canvasHeight, overscrollResistance)
+          : clampViewportOffset(viewport.offsetY, height, metrics.canvasHeight),
     };
   }
 
@@ -1929,6 +2452,18 @@ export class ImageCanvasEditor {
     return Math.round(clamp(zoom, MIN_VIEWPORT_ZOOM, MAX_VIEWPORT_ZOOM) * 100) / 100;
   }
 
+  private normalizeWheelDelta(deltaY: number, deltaMode: number, pageHeight: number): number {
+    if (deltaMode === WHEEL_DELTA_LINE) {
+      return deltaY * WHEEL_LINE_PIXELS;
+    }
+
+    if (deltaMode === WHEEL_DELTA_PAGE) {
+      return deltaY * pageHeight;
+    }
+
+    return deltaY;
+  }
+
   private syncCanvasCursor(): void {
     if (!this.canvas) {
       return;
@@ -1949,9 +2484,15 @@ export class ImageCanvasEditor {
     if (
       this.previewInteraction.mode === 'moving-text' ||
       this.previewInteraction.mode === 'rotating-text' ||
-      this.previewInteraction.mode === 'panning'
+      this.previewInteraction.mode === 'panning' ||
+      this.previewInteraction.mode === 'drawing-brush'
     ) {
-      this.canvas.style.cursor = 'grabbing';
+      this.canvas.style.cursor = this.previewInteraction.mode === 'drawing-brush' ? 'crosshair' : 'grabbing';
+      return;
+    }
+
+    if (state.activeTool === 'brush') {
+      this.canvas.style.cursor = 'crosshair';
       return;
     }
 
@@ -1965,8 +2506,7 @@ export class ImageCanvasEditor {
       return;
     }
 
-    this.canvas.style.cursor =
-      normalizeTextState(state).texts.length > 0 ? 'grab' : 'default';
+    this.canvas.style.cursor = normalizeTextState(state).activeTextId ? 'grab' : 'default';
   }
 
   private render(): void {

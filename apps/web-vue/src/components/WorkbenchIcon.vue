@@ -17,6 +17,7 @@ type IconName =
   | 'crop'
   | 'crop-apply'
   | 'crop-cancel'
+  | 'brush'
   | 'text'
   | 'text-remove'
   | 'download'
@@ -165,6 +166,13 @@ const ICONS = {
       { tag: 'path', attrs: { d: 'M16 21v-9a2 2 0 0 0-2-2H3' } },
       { tag: 'path', attrs: { d: 'm15 15 5 5' } },
       { tag: 'path', attrs: { d: 'm20 15-5 5' } },
+    ],
+  },
+  brush: {
+    viewBox: '0 0 24 24',
+    nodes: [
+      { tag: 'path', attrs: { d: 'M14 4c2.2 0 4 1.8 4 4 0 1.4-.7 2.7-1.8 3.4l-4.7 3.1a3.5 3.5 0 0 0-1.5 2.9V20a2 2 0 0 1-4 0v-1.4c0-2.3 1.1-4.4 3-5.7l4.7-3.1A2 2 0 0 0 14 4Z' } },
+      { tag: 'path', attrs: { d: 'M7 20h3' } },
     ],
   },
   text: {

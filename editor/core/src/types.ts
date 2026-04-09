@@ -25,6 +25,43 @@ export interface EditorViewport {
   offsetY: number;
 }
 
+export type EditorCanvasTool = 'navigate' | 'text' | 'brush';
+
+export type BrushType = 'pencil' | 'brush' | 'pen' | 'eraser';
+
+export interface BrushStrokePoint {
+  xRatio: number;
+  yRatio: number;
+}
+
+export interface BrushCursor {
+  xRatio: number;
+  yRatio: number;
+}
+
+export interface BrushStroke {
+  id: string;
+  type: BrushType;
+  color: string;
+  size: number;
+  hardness: number;
+  points: BrushStrokePoint[];
+}
+
+export interface BrushSettings {
+  type: BrushType;
+  color: string;
+  size: number;
+  hardness: number;
+}
+
+export type BrushToolState =
+  | { mode: 'idle' }
+  | {
+      mode: 'drawing';
+      strokeId: string;
+    };
+
 export interface TextItem {
   id: string;
   content: string;
@@ -88,10 +125,15 @@ export interface EditorState {
   cropRect: Rect | null;
   draftCropRect: Rect | null;
   cropMode: boolean;
+  activeTool?: EditorCanvasTool;
   textOverlay: TextOverlay | null;
   texts?: TextItem[];
   activeTextId?: string | null;
   textToolState?: TextToolState;
+  brush?: BrushSettings;
+  brushStrokes?: BrushStroke[];
+  brushToolState?: BrushToolState;
+  brushCursor?: BrushCursor | null;
   adjustments: EditorAdjustments;
   transform: EditorTransform;
   viewport: EditorViewport;
@@ -102,10 +144,14 @@ export interface SerializableEditorState {
   schemaVersion: number;
   image: Omit<ImageResource, 'element'> | null;
   cropRect: Rect | null;
+  activeTool: EditorCanvasTool;
   textOverlay?: TextOverlay | null;
   texts: TextItem[];
   activeTextId: string | null;
   textToolState: TextToolState;
+  brush: BrushSettings;
+  brushStrokes: BrushStroke[];
+  brushToolState: BrushToolState;
   adjustments: EditorAdjustments;
   transform: EditorTransform;
   activePreset: FilterPreset;
@@ -155,6 +201,84 @@ export interface NormalizedTextState {
   activeTextId: string | null;
   textToolState: TextToolState;
 }
+
+const clampNumber = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
+export const BRUSH_SIZE_MIN = 1;
+export const BRUSH_SIZE_MAX = 160;
+export const BRUSH_HARDNESS_MIN = 0;
+export const BRUSH_HARDNESS_MAX = 1;
+
+export const createDefaultBrushSettings = (): BrushSettings => ({
+  type: 'brush',
+  color: '#E9C083',
+  size: 24,
+  hardness: 0.68,
+});
+
+export const createIdleBrushToolState = (): BrushToolState => ({
+  mode: 'idle',
+});
+
+export const cloneBrushToolState = (brushToolState: BrushToolState): BrushToolState => ({
+  ...brushToolState,
+});
+
+export const normalizeBrushSettings = (brush: BrushSettings | null | undefined): BrushSettings => {
+  const defaults = createDefaultBrushSettings();
+
+  if (!brush) {
+    return defaults;
+  }
+
+  return {
+    type: brush.type,
+    color: brush.color,
+    size: Math.round(clampNumber(brush.size, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX)),
+    hardness: Math.round(clampNumber(brush.hardness, BRUSH_HARDNESS_MIN, BRUSH_HARDNESS_MAX) * 100) / 100,
+  };
+};
+
+const normalizeBrushStrokePoint = (point: BrushStrokePoint): BrushStrokePoint => ({
+  xRatio: clampNumber(point.xRatio, 0, 1),
+  yRatio: clampNumber(point.yRatio, 0, 1),
+});
+
+const normalizeBrushStroke = (stroke: BrushStroke): BrushStroke => {
+  const brushSettings = normalizeBrushSettings(stroke);
+
+  return {
+    id: stroke.id,
+    type: brushSettings.type,
+    color: brushSettings.color,
+    size: brushSettings.size,
+    hardness: brushSettings.hardness,
+    points: stroke.points.map((point) => normalizeBrushStrokePoint(point)),
+  };
+};
+
+export const cloneBrushStrokes = (brushStrokes: BrushStroke[]): BrushStroke[] =>
+  brushStrokes.map((stroke) => ({
+    ...normalizeBrushStroke(stroke),
+    points: stroke.points.map((point) => normalizeBrushStrokePoint(point)),
+  }));
+
+export const normalizeBrushToolState = (
+  brushToolState: BrushToolState | null | undefined,
+  brushStrokes: BrushStroke[],
+): BrushToolState => {
+  if (!brushToolState) {
+    return createIdleBrushToolState();
+  }
+
+  if (brushToolState.mode !== 'drawing') {
+    return createIdleBrushToolState();
+  }
+
+  return brushStrokes.some((stroke) => stroke.id === brushToolState.strokeId)
+    ? cloneBrushToolState(brushToolState)
+    : createIdleBrushToolState();
+};
 
 const DEFAULT_LEGACY_TEXT_ID = 'legacy-text-1';
 
@@ -264,11 +388,15 @@ const normalizeActiveTextId = (
     return null;
   }
 
+  if (activeTextId === null) {
+    return null;
+  }
+
   if (activeTextId && texts.some((text) => text.id === activeTextId)) {
     return activeTextId;
   }
 
-  return texts[0].id;
+  return activeTextId === undefined ? texts[0].id : texts[0]?.id ?? null;
 };
 
 export const normalizeTextToolState = (
@@ -317,7 +445,7 @@ export const normalizeTextState = (
         )
       : baseTexts;
   const textToolState = normalizeTextToolState(state.textToolState, texts);
-  const activeText = texts.find((text) => text.id === activeTextId) ?? texts[0] ?? null;
+  const activeText = activeTextId ? texts.find((text) => text.id === activeTextId) ?? null : null;
 
   return {
     textOverlay: textItemToTextOverlay(activeText),

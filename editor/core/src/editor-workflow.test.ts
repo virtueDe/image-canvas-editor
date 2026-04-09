@@ -1,6 +1,100 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ImageCanvasEditor } from './editor';
 import { resolveTextRotateHandleScreenPoint } from './text-engine';
+
+const attachPreviewHarness = (
+  editor: ImageCanvasEditor,
+  metricOverrides: Partial<{
+    canvasWidth: number;
+    canvasHeight: number;
+    baseDisplayWidth: number;
+    baseDisplayHeight: number;
+    displayX: number;
+    displayY: number;
+    displayWidth: number;
+    displayHeight: number;
+    sourceWidth: number;
+    sourceHeight: number;
+  }> = {},
+) => {
+  const editorInternals = editor as unknown as {
+    canvas: {
+      getBoundingClientRect: () => DOMRect;
+      setPointerCapture: (pointerId: number) => void;
+      releasePointerCapture: (pointerId: number) => void;
+      hasPointerCapture: (pointerId: number) => boolean;
+      style: {
+        cursor: string;
+      };
+    };
+    renderer: {
+      getCropViewMetrics: () => null;
+      render: () => void;
+      getPreviewViewMetrics: () => {
+        canvasWidth: number;
+        canvasHeight: number;
+        baseDisplayWidth: number;
+        baseDisplayHeight: number;
+        displayX: number;
+        displayY: number;
+        displayWidth: number;
+        displayHeight: number;
+        sourceWidth: number;
+        sourceHeight: number;
+      };
+    };
+    store: {
+      setState: (updater: ReturnType<ImageCanvasEditor['getState']>) => void;
+    };
+    onCanvasPointerDown: (event: PointerEvent) => void;
+    onCanvasPointerMove: (event: PointerEvent) => void;
+    onCanvasDoubleClick: (event: MouseEvent) => void;
+    stopCropInteraction: (event: PointerEvent) => void;
+  };
+  const previewMetrics = {
+    canvasWidth: 1000,
+    canvasHeight: 800,
+    baseDisplayWidth: 1000,
+    baseDisplayHeight: 800,
+    displayX: 0,
+    displayY: 0,
+    displayWidth: 1000,
+    displayHeight: 800,
+    sourceWidth: 1000,
+    sourceHeight: 800,
+    ...metricOverrides,
+  };
+
+  editorInternals.store.setState({
+    ...editor.getState(),
+    image: {
+      element: {} as HTMLImageElement,
+      width: previewMetrics.sourceWidth,
+      height: previewMetrics.sourceHeight,
+      name: 'mock.png',
+      dataUrl: 'data:image/png;base64,mock',
+    },
+  });
+  editorInternals.canvas = {
+    getBoundingClientRect: () => ({ left: 0, top: 0 } as DOMRect),
+    setPointerCapture: () => undefined,
+    releasePointerCapture: () => undefined,
+    hasPointerCapture: () => false,
+    style: {
+      cursor: 'default',
+    },
+  };
+  editorInternals.renderer = {
+    getCropViewMetrics: () => null,
+    render: () => undefined,
+    getPreviewViewMetrics: () => previewMetrics,
+  };
+
+  return {
+    editorInternals,
+    previewMetrics,
+  };
+};
 
 describe('multi-text editor workflow', () => {
   it('creates a text item after insertion placement', () => {
@@ -230,66 +324,11 @@ describe('multi-text editor workflow', () => {
 
   it('starts text rotation from the rotate handle while editing', () => {
     const editor = new ImageCanvasEditor();
-    const editorInternals = editor as unknown as {
-      canvas: {
-        getBoundingClientRect: () => DOMRect;
-        setPointerCapture: (pointerId: number) => void;
-        style: {
-          cursor: string;
-        };
-      };
-      renderer: {
-        getCropViewMetrics: () => null;
-        render: () => void;
-        getPreviewViewMetrics: () => {
-          displayX: number;
-          displayY: number;
-          displayWidth: number;
-          displayHeight: number;
-          sourceWidth: number;
-          sourceHeight: number;
-        };
-      };
-      store: {
-        setState: (updater: ReturnType<ImageCanvasEditor['getState']>) => void;
-      };
-      onCanvasPointerDown: (event: PointerEvent) => void;
-    };
-    const previewMetrics = {
-      displayX: 0,
-      displayY: 0,
-      displayWidth: 1000,
-      displayHeight: 800,
-      sourceWidth: 1000,
-      sourceHeight: 800,
-    };
-
     editor.startTextInsertion();
     editor.placeTextAt(0.5, 0.5);
     editor.insertText('标题');
 
-    editorInternals.store.setState({
-      ...editor.getState(),
-      image: {
-        element: {} as HTMLImageElement,
-        width: previewMetrics.sourceWidth,
-        height: previewMetrics.sourceHeight,
-        name: 'mock.png',
-        dataUrl: 'data:image/png;base64,mock',
-      },
-    });
-    editorInternals.canvas = {
-      getBoundingClientRect: () => ({ left: 0, top: 0 } as DOMRect),
-      setPointerCapture: () => undefined,
-      style: {
-        cursor: 'default',
-      },
-    };
-    editorInternals.renderer = {
-      getCropViewMetrics: () => null,
-      render: () => undefined,
-      getPreviewViewMetrics: () => previewMetrics,
-    };
+    const { editorInternals, previewMetrics } = attachPreviewHarness(editor);
 
     const activeText = editor.getState().texts[0]!;
     const rotateHandlePoint = resolveTextRotateHandleScreenPoint(
@@ -317,6 +356,71 @@ describe('multi-text editor workflow', () => {
       mode: 'rotating',
       textId: activeText.id,
     });
+  });
+
+  it('selects text on single click without entering edit mode', () => {
+    const editor = new ImageCanvasEditor();
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.5, 0.5);
+    editor.insertText('标题');
+    editor.finishTextEditing();
+
+    const { editorInternals } = attachPreviewHarness(editor);
+    editor.clearTextSelection();
+
+    editorInternals.onCanvasPointerDown({
+      button: 0,
+      pointerId: 1,
+      clientX: 500,
+      clientY: 400,
+    } as PointerEvent);
+
+    expect(editor.getState().activeTextId).toBe(editor.getState().texts[0]?.id);
+    expect(editor.getState().textToolState.mode).toBe('idle');
+  });
+
+  it('enters editing on text double click', () => {
+    const editor = new ImageCanvasEditor();
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.5, 0.5);
+    editor.insertText('标题');
+    editor.finishTextEditing();
+
+    const { editorInternals } = attachPreviewHarness(editor);
+
+    editorInternals.onCanvasDoubleClick({
+      clientX: 500,
+      clientY: 400,
+    } as MouseEvent);
+
+    expect(editor.getState().textToolState).toMatchObject({
+      mode: 'editing',
+      textId: editor.getState().texts[0]?.id,
+    });
+  });
+
+  it('clears selection when clicking blank canvas', () => {
+    const editor = new ImageCanvasEditor();
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.5, 0.5);
+    editor.insertText('标题');
+    editor.finishTextEditing();
+    editor.selectText(editor.getState().texts[0]!.id);
+
+    const { editorInternals } = attachPreviewHarness(editor);
+
+    editorInternals.onCanvasPointerDown({
+      button: 0,
+      pointerId: 1,
+      clientX: 50,
+      clientY: 50,
+    } as PointerEvent);
+
+    expect(editor.getState().activeTextId).toBeNull();
+    expect(editor.getState().textToolState.mode).toBe('idle');
   });
 
   it('deletes an empty text when editing finishes', () => {
@@ -356,5 +460,147 @@ describe('multi-text editor workflow', () => {
     editor.undo();
 
     expect(editor.getState().texts).toEqual([]);
+  });
+
+  it('uses the current timestamp as the exported image file name', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 9, 15, 4, 5));
+
+    try {
+      const editor = new ImageCanvasEditor();
+
+      expect(editor.getSuggestedFileName('.png')).toBe('20260409150405.png');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('creates a brush stroke as a single undoable history session', () => {
+    const editor = new ImageCanvasEditor();
+    const { editorInternals } = attachPreviewHarness(editor);
+
+    editor.selectBrushTool();
+
+    editorInternals.onCanvasPointerDown({
+      button: 0,
+      pointerId: 1,
+      clientX: 300,
+      clientY: 320,
+    } as PointerEvent);
+    editorInternals.onCanvasPointerMove({
+      button: 0,
+      pointerId: 1,
+      clientX: 360,
+      clientY: 360,
+    } as PointerEvent);
+    editorInternals.onCanvasPointerMove({
+      button: 0,
+      pointerId: 1,
+      clientX: 420,
+      clientY: 380,
+    } as PointerEvent);
+    editorInternals.stopCropInteraction({
+      pointerId: 1,
+    } as PointerEvent);
+
+    expect(editor.getState().brushStrokes).toHaveLength(1);
+    expect(editor.getState().brushStrokes?.[0]).toMatchObject({
+      type: 'brush',
+    });
+    expect((editor.getState().brushStrokes?.[0]?.points.length ?? 0) >= 2).toBe(true);
+    expect(editor.getState().brushToolState).toEqual({
+      mode: 'idle',
+    });
+
+    editor.undo();
+    expect(editor.getState().brushStrokes).toEqual([]);
+  });
+
+  it('stores eraser strokes with the selected brush tool', () => {
+    const editor = new ImageCanvasEditor();
+    const { editorInternals } = attachPreviewHarness(editor);
+
+    editor.selectBrushTool();
+    editor.updateBrushType('eraser');
+
+    editorInternals.onCanvasPointerDown({
+      button: 0,
+      pointerId: 1,
+      clientX: 500,
+      clientY: 400,
+    } as PointerEvent);
+    editorInternals.stopCropInteraction({
+      pointerId: 1,
+    } as PointerEvent);
+
+    expect(editor.getState().brushStrokes?.[0]).toMatchObject({
+      type: 'eraser',
+    });
+  });
+
+  it('maps brush points correctly after rotation and flip are combined', () => {
+    const editor = new ImageCanvasEditor();
+    const { editorInternals } = attachPreviewHarness(editor, {
+      canvasWidth: 800,
+      canvasHeight: 1000,
+      baseDisplayWidth: 800,
+      baseDisplayHeight: 1000,
+      displayWidth: 800,
+      displayHeight: 1000,
+      sourceWidth: 800,
+      sourceHeight: 1000,
+    });
+    const brushInternals = editorInternals as typeof editorInternals & {
+      resolveBrushPointFromPreview: (
+        point: { canvasX: number; canvasY: number },
+        previewMetrics: {
+          canvasWidth: number;
+          canvasHeight: number;
+          baseDisplayWidth: number;
+          baseDisplayHeight: number;
+          displayX: number;
+          displayY: number;
+          displayWidth: number;
+          displayHeight: number;
+          sourceWidth: number;
+          sourceHeight: number;
+        },
+      ) => { xRatio: number; yRatio: number } | null;
+    };
+
+    editorInternals.store.setState({
+      ...editor.getState(),
+      image: {
+        element: {} as HTMLImageElement,
+        width: 1000,
+        height: 800,
+        name: 'mock.png',
+        dataUrl: 'data:image/png;base64,mock',
+      },
+      transform: {
+        rotation: 90,
+        flipX: true,
+        flipY: false,
+      },
+    });
+
+    const point = brushInternals.resolveBrushPointFromPreview(
+      { canvasX: 200, canvasY: 250 },
+      {
+        canvasWidth: 800,
+        canvasHeight: 1000,
+        baseDisplayWidth: 800,
+        baseDisplayHeight: 1000,
+        displayX: 0,
+        displayY: 0,
+        displayWidth: 800,
+        displayHeight: 1000,
+        sourceWidth: 800,
+        sourceHeight: 1000,
+      },
+    );
+
+    expect(point?.xRatio).toBeCloseTo(0.25, 6);
+    expect(point?.yRatio).toBeCloseTo(0.25, 6);
   });
 });

@@ -38,6 +38,7 @@ export declare class ImageCanvasEditor {
     saveDraft(): boolean;
     restoreDraft(): Promise<void>;
     exportAsDataUrl(type?: string, quality?: number): string | null;
+    getRenderFps(): number | null;
     getSuggestedFileName(extension?: string): string;
     private setState;
     private render;

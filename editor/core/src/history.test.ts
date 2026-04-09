@@ -35,6 +35,7 @@ const createState = (overrides: Partial<EditorState> = {}): EditorState => ({
   cropRect: createRect(10, 20, 200, 120),
   draftCropRect: createRect(5, 6, 300, 200),
   cropMode: true,
+  activeTool: 'navigate',
   textOverlay: {
     text: '示例文案',
     xRatio: 0.35,
@@ -52,6 +53,16 @@ const createState = (overrides: Partial<EditorState> = {}): EditorState => ({
     selectionStart: 4,
     selectionEnd: 4,
     composing: false,
+  },
+  brush: {
+    type: 'brush',
+    color: '#E9C083',
+    size: 24,
+    hardness: 0.68,
+  },
+  brushStrokes: [],
+  brushToolState: {
+    mode: 'idle',
   },
   adjustments: {
     contrast: 10,
@@ -81,9 +92,13 @@ describe('history snapshots', () => {
     expect(snapshot).toEqual({
       image: state.image,
       cropRect: state.cropRect,
+      activeTool: state.activeTool,
       texts: state.texts,
       activeTextId: state.activeTextId,
       textToolState: state.textToolState,
+      brush: state.brush,
+      brushStrokes: state.brushStrokes,
+      brushToolState: state.brushToolState,
       adjustments: state.adjustments,
       transform: state.transform,
       activePreset: state.activePreset,
@@ -148,6 +163,10 @@ describe('history snapshots', () => {
     expect(nextState.texts).toEqual(snapshot.texts);
     expect(nextState.activeTextId).toEqual(snapshot.activeTextId);
     expect(nextState.textToolState).toEqual(snapshot.textToolState);
+    expect(nextState.activeTool).toEqual(snapshot.activeTool);
+    expect(nextState.brush).toEqual(snapshot.brush);
+    expect(nextState.brushStrokes).toEqual(snapshot.brushStrokes);
+    expect(nextState.brushToolState).toEqual(snapshot.brushToolState);
     expect(nextState.adjustments).toEqual(snapshot.adjustments);
     expect(nextState.transform).toEqual(snapshot.transform);
     expect(nextState.activePreset).toEqual(snapshot.activePreset);

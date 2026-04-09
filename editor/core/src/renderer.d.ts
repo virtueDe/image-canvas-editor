@@ -1,15 +1,31 @@
-import type { CropViewMetrics, EditorState } from './types';
+import type { CropViewMetrics, EditorState, PreviewViewMetrics } from './types';
 export declare class CanvasRenderer {
     private readonly canvas;
     private cropViewMetrics;
+    private previewViewMetrics;
+    private frameTimestamps;
+    private framesPerSecond;
+    private processedPreviewCache;
     constructor(canvas: HTMLCanvasElement);
     getCropViewMetrics(): CropViewMetrics | null;
+    getPreviewViewMetrics(): PreviewViewMetrics | null;
+    getFramesPerSecond(): number | null;
     render(state: EditorState): void;
+    private getProcessedPreview;
+    private createProcessedPreviewCacheKey;
+    private updateFrameStats;
+    private resetFrameStats;
     private prepareCanvas;
-    private drawEmptyState;
     private renderCropMode;
     private drawHandles;
     private drawInfo;
+    private drawActiveTextSelection;
+    private drawTextRotateHandle;
+    private resolveTextTopCenterScreenPoint;
+    private resolveRotatedScreenRectPoints;
+    private resolveRotatedCaretPoints;
+    private toRotatedScreenPoints;
     private fitRect;
     private toScreenRect;
+    private resolvePreviewRect;
 }

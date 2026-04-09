@@ -17,12 +17,19 @@ const {
   activeTextRotation,
   isTextInserting,
   isTextEditing,
+  isBrushActive,
   hiddenTextareaValue,
   canEditText,
   textHint,
+  brushHint,
   activeTextFontSize,
+  activeBrushType,
+  activeBrushColor,
+  activeBrushSize,
+  activeBrushHardness,
   rotationText,
   zoomText,
+  fpsText,
   canApplyCrop,
   canCancelCrop,
   canUndo,
@@ -39,6 +46,11 @@ const {
   previewActiveTextRotation,
   commitActiveTextRotation,
   startTextInsertion,
+  selectBrushTool,
+  updateBrushType,
+  updateBrushColor,
+  updateBrushSize,
+  updateBrushHardness,
   removeTextOverlay,
   onHiddenTextareaInput,
   onHiddenTextareaSelectionChange,
@@ -62,13 +74,14 @@ const {
   restoreCurrentDraft,
 } = useImageEditor();
 
-type SectionId = 'meta' | 'transform' | 'crop' | 'text' | 'preset' | 'adjust';
+type SectionId = 'meta' | 'transform' | 'crop' | 'brush' | 'text' | 'preset' | 'adjust';
 type WorkbenchTheme = 'light' | 'dark';
 
 const sectionOpen = reactive<Record<SectionId, boolean>>({
   meta: true,
   transform: true,
   crop: false,
+  brush: true,
   text: true,
   preset: false,
   adjust: true,
@@ -104,6 +117,16 @@ const TEXT_FONT_SIZE_MIN = 12;
 const TEXT_FONT_SIZE_MAX = 180;
 const TEXT_ROTATION_MIN = -180;
 const TEXT_ROTATION_MAX = 180;
+const BRUSH_SIZE_MIN = 1;
+const BRUSH_SIZE_MAX = 160;
+const BRUSH_HARDNESS_MIN = 0;
+const BRUSH_HARDNESS_MAX = 100;
+const BRUSH_TYPES = [
+  { label: '铅笔', value: 'pencil' },
+  { label: '画笔', value: 'brush' },
+  { label: '钢笔笔刷', value: 'pen' },
+  { label: '橡皮擦', value: 'eraser' },
+] as const;
 
 const applyDocumentTheme = (nextTheme: WorkbenchTheme): void => {
   if (typeof document === 'undefined') {
@@ -141,17 +164,23 @@ const stageModeLabel = computed(() => {
     return '文字编辑';
   }
 
+  if (isBrushActive.value) {
+    return '画笔模式';
+  }
+
   return hasActiveText.value ? '文字已选中' : '普通模式';
 });
 const stageHint = computed(() =>
   isCropMode.value
     ? '裁剪模式：拖拽裁剪框，拖动内部移动，四角缩放。'
-    : isTextInserting.value
-      ? '插入态：点击画布中的落点创建一段新文字。'
+      : isTextInserting.value
+        ? '插入态：点击画布中的落点创建一段新文字。'
       : isTextEditing.value
-        ? '编辑态：直接输入文字，点击空白区域结束本次编辑。'
+        ? '编辑态：直接输入文字，点击空白区域结束编辑。'
+        : isBrushActive.value
+          ? '画笔态：在图片区域按下并拖拽即可绘制，撤销按整笔回退。'
         : hasActiveText.value
-          ? '文字已选中：点击文字继续编辑，拖动方形手柄移动位置，拖动圆形手柄旋转角度。'
+          ? '文字已选中：拖拽文字本体移动，双击文字进入编辑，拖动圆形手柄旋转角度。'
           : '普通模式：拖拽移动画布，滚轮缩放，双击复位视图。',
 );
 const isMobileInspectorModal = computed(() => !isDesktopViewport.value && isInspectorOpen.value);
@@ -236,11 +265,17 @@ const syncHiddenTextInput = async (): Promise<void> => {
   }
 };
 const getRangeValue = (event: Event): number => Number((event.target as HTMLInputElement).value);
+const getColorValue = (event: Event): string => (event.target as HTMLInputElement).value;
 const clampTextFontSize = (value: number): number =>
   Math.min(TEXT_FONT_SIZE_MAX, Math.max(TEXT_FONT_SIZE_MIN, Math.round(value)));
 const clampTextRotation = (value: number): number =>
   Math.min(TEXT_ROTATION_MAX, Math.max(TEXT_ROTATION_MIN, Math.round(value)));
+const clampBrushSize = (value: number): number =>
+  Math.min(BRUSH_SIZE_MAX, Math.max(BRUSH_SIZE_MIN, Math.round(value)));
+const clampBrushHardness = (value: number): number =>
+  Math.min(BRUSH_HARDNESS_MAX, Math.max(BRUSH_HARDNESS_MIN, Math.round(value)));
 const activeTextRotationLabel = computed(() => `${Math.round(activeTextRotation.value)}°`);
+const activeBrushHardnessLabel = computed(() => `${activeBrushHardness.value}%`);
 const handleTextFontSizeChange = (nextValue: number): void => {
   if (!hasActiveText.value || !canEditText.value || Number.isNaN(nextValue)) {
     return;
@@ -248,6 +283,20 @@ const handleTextFontSizeChange = (nextValue: number): void => {
 
   const normalized = clampTextFontSize(nextValue);
   updateTextOverlayFontSize(normalized);
+};
+const handleBrushSizeChange = (nextValue: number): void => {
+  if (!hasImage.value || isCropMode.value || Number.isNaN(nextValue)) {
+    return;
+  }
+
+  updateBrushSize(clampBrushSize(nextValue));
+};
+const handleBrushHardnessChange = (nextValue: number): void => {
+  if (!hasImage.value || isCropMode.value || Number.isNaN(nextValue)) {
+    return;
+  }
+
+  updateBrushHardness(clampBrushHardness(nextValue) / 100);
 };
 const handleTextRotationPreview = (nextValue: number): void => {
   if (!hasActiveText.value || !canEditText.value || Number.isNaN(nextValue)) {
@@ -438,6 +487,9 @@ onBeforeUnmount(() => {
                 <button class="dock-tool-btn dock-tool-btn--primary" type="button" :disabled="!hasImage || isCropMode" title="裁剪" aria-label="裁剪" @click="enterCropMode">
                   <WorkbenchIcon name="crop" :size="18" />
                 </button>
+                <button class="dock-tool-btn" :class="{ 'dock-tool-btn--primary': isBrushActive }" type="button" :disabled="!hasImage || isCropMode" title="画笔" aria-label="画笔" @click="selectBrushTool">
+                  <WorkbenchIcon name="brush" :size="18" />
+                </button>
                 <button class="dock-tool-btn" :class="{ 'dock-tool-btn--primary': isTextInserting || isTextEditing }" type="button" :disabled="!canEditText" title="文字" aria-label="文字" @click="startTextInsertion">
                   <WorkbenchIcon name="text" :size="18" />
                 </button>
@@ -550,6 +602,77 @@ onBeforeUnmount(() => {
                   </div>
                   <p class="mt-3 text-xs leading-5 text-[color:var(--studio-ink-dim)]">裁剪坐标始终基于原图。这样后面再旋转、翻转，状态也不会乱。</p>
                 </InspectorSection>
+                <InspectorSection title="画笔" :hint="brushHint" :tone="isBrushActive && !isCropMode ? 'accent' : 'muted'" :open="sectionOpen.brush" @toggle="(next) => setSectionOpen('brush', next)">
+                  <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-2">
+                      <button class="btn-primary workbench-icon-btn w-full justify-start" type="button" :disabled="!hasImage || isCropMode" @click="selectBrushTool">
+                        <WorkbenchIcon name="brush" :size="16" />
+                        <span>{{ isBrushActive ? '继续绘制' : '启用画笔' }}</span>
+                      </button>
+                      <div class="rounded-3 border border-[color:var(--studio-border)] bg-[color:var(--studio-surface-2)] px-3 py-2 text-xs text-[color:var(--studio-ink-dim)]">
+                        独立图层，导出合成
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                      <button
+                        v-for="item in BRUSH_TYPES"
+                        :key="item.value"
+                        class="preset-btn px-3 py-2 text-xs"
+                        :class="activeBrushType === item.value ? 'btn-primary' : 'btn-soft'"
+                        type="button"
+                        :disabled="!hasImage || isCropMode"
+                        @click="updateBrushType(item.value)"
+                      >
+                        {{ item.label }}
+                      </button>
+                    </div>
+                    <label class="block text-sm text-[color:var(--studio-ink-muted)]">
+                      <span class="mb-2 flex items-center justify-between">
+                        <span>大小</span>
+                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ activeBrushSize }} px</span>
+                      </span>
+                      <input class="input-range" type="range" :min="BRUSH_SIZE_MIN" :max="BRUSH_SIZE_MAX" step="1" :disabled="!hasImage || isCropMode" :value="activeBrushSize" @input="handleBrushSizeChange(getRangeValue($event))" />
+                    </label>
+                    <label class="block text-sm text-[color:var(--studio-ink-muted)]">
+                      <span class="mb-2 flex items-center justify-between">
+                        <span>硬度</span>
+                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ activeBrushHardnessLabel }}</span>
+                      </span>
+                      <input class="input-range" type="range" :min="BRUSH_HARDNESS_MIN" :max="BRUSH_HARDNESS_MAX" step="1" :disabled="!hasImage || isCropMode" :value="activeBrushHardness" @input="handleBrushHardnessChange(getRangeValue($event))" />
+                    </label>
+                    <div class="space-y-2">
+                      <div class="flex items-center justify-between text-sm text-[color:var(--studio-ink-muted)]">
+                        <span>颜色</span>
+                        <span class="text-xs text-[color:var(--studio-ink-dim)]">{{ activeBrushType === 'eraser' ? '橡皮擦不使用颜色' : activeBrushColor }}</span>
+                      </div>
+                      <div class="flex items-center gap-3">
+                        <input
+                          class="h-10 w-16 cursor-pointer rounded-[12px] border border-[color:var(--studio-border)] bg-transparent p-1"
+                          type="color"
+                          :disabled="!hasImage || isCropMode || activeBrushType === 'eraser'"
+                          :value="activeBrushColor"
+                          @input="updateBrushColor(getColorValue($event))"
+                        />
+                        <div class="grid flex-1 grid-cols-3 gap-2">
+                          <button
+                            v-for="item in TEXT_PRESET_COLORS"
+                            :key="`brush-${item.value}`"
+                            class="text-color-chip"
+                            :class="{ 'is-active': activeBrushColor === item.value }"
+                            type="button"
+                            :disabled="!hasImage || isCropMode || activeBrushType === 'eraser'"
+                            :aria-label="`画笔颜色：${item.label}`"
+                            @click="updateBrushColor(item.value)"
+                          >
+                            <span class="text-color-chip__swatch" :style="{ backgroundColor: item.value }" />
+                            <span class="text-color-chip__label">{{ item.label }}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="text-helper text-xs leading-5 text-[color:var(--studio-ink-dim)]">铅笔偏硬边，画笔偏柔和，钢笔笔刷更利落，橡皮擦按同样的笔触逻辑擦除。每一次按下到抬起算一笔。</p>
+                  </div>
+                </InspectorSection>
                 <InspectorSection title="文字" :hint="textHint" :tone="(hasActiveText || isTextInserting || isTextEditing) && !isCropMode ? 'accent' : 'muted'" :open="sectionOpen.text" @toggle="(next) => setSectionOpen('text', next)">
                   <div class="text-tool-stack space-y-4">
                     <div class="grid grid-cols-2 gap-2">
@@ -598,7 +721,7 @@ onBeforeUnmount(() => {
                         </button>
                       </div>
                     </div>
-                    <p class="text-helper text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasActiveText ? '当前选中文字会参与撤销、重做和 PNG 导出。' : '新增后可点击文字直接编辑；选中后拖动方形手柄移动位置，拖动圆形手柄旋转角度。' }}</p>
+                    <p class="text-helper text-xs leading-5 text-[color:var(--studio-ink-dim)]">{{ hasActiveText ? '当前选中文字会参与撤销、重做和 PNG 导出。' : '新增后可双击文字进入编辑；选中后直接拖拽文字本体移动，拖动圆形手柄旋转角度。' }}</p>
                   </div>
                 </InspectorSection>
                 <InspectorSection title="滤镜预设" hint="先预设，再微调" :open="sectionOpen.preset" @toggle="(next) => setSectionOpen('preset', next)">
@@ -660,6 +783,10 @@ onBeforeUnmount(() => {
                 <div class="stage-metric">
                   <span class="stage-metric__label">状态</span>
                   <strong class="stage-metric__value">{{ metaSummary.status }}</strong>
+                </div>
+                <div class="stage-metric">
+                  <span class="stage-metric__label">FPS</span>
+                  <strong class="stage-metric__value">{{ fpsText }}</strong>
                 </div>
                 <div class="flex items-center gap-2 lg:hidden">
                   <button

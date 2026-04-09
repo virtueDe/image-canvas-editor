@@ -1,14 +1,20 @@
-import { createProcessedCanvas } from './image-processing';
+import { createProcessedCanvas, resolveProcessedCanvasSize } from './image-processing';
 import {
-  resolveDragHandleScreenRect,
   resolveTextCaretRect,
   resolveTextLayout,
   resolveTextRotateHandleScreenPoint,
   resolveTextScreenRect,
   toScreenTextPoint,
 } from './text-engine';
-import { normalizeTextState, type CropViewMetrics, type EditorState, type PreviewViewMetrics, type Rect } from './types';
-import { clampViewportOffset, fullImageRect } from './utils';
+import {
+  normalizeBrushSettings,
+  normalizeTextState,
+  type CropViewMetrics,
+  type EditorState,
+  type PreviewViewMetrics,
+  type Rect,
+} from './types';
+import { fullImageRect } from './utils';
 
 const HANDLE_SIZE = 10;
 const TEXT_SELECTION_PADDING = 6;
@@ -18,6 +24,19 @@ const TEXT_FONT_FAMILY = '"Source Han Sans SC", "Noto Sans SC", "PingFang SC", "
 type ScreenPoint = {
   x: number;
   y: number;
+};
+
+type ProcessedPreview = NonNullable<ReturnType<typeof createProcessedCanvas>>;
+
+type ProcessedPreviewCache = {
+  image: EditorState['image'];
+  cropRectKey: string;
+  preset: EditorState['activePreset'];
+  adjustmentsKey: string;
+  transformKey: string;
+  textsKey: string;
+  brushStrokesKey: string;
+  result: ProcessedPreview;
 };
 
 const drawPolygonPath = (ctx: CanvasRenderingContext2D, points: ScreenPoint[]): void => {
@@ -45,6 +64,9 @@ const createCenteredRect = (centerX: number, centerY: number, size: number): Rec
 export class CanvasRenderer {
   private cropViewMetrics: CropViewMetrics | null = null;
   private previewViewMetrics: PreviewViewMetrics | null = null;
+  private frameTimestamps: number[] = [];
+  private framesPerSecond: number | null = null;
+  private processedPreviewCache: ProcessedPreviewCache | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
@@ -56,14 +78,22 @@ export class CanvasRenderer {
     return this.previewViewMetrics;
   }
 
+  getFramesPerSecond(): number | null {
+    return this.framesPerSecond;
+  }
+
   render(state: EditorState): void {
     const { width, height, ctx } = this.prepareCanvas();
 
     if (!state.image) {
       this.cropViewMetrics = null;
       this.previewViewMetrics = null;
+      this.resetFrameStats();
+      this.processedPreviewCache = null;
       return;
     }
+
+    this.updateFrameStats();
 
     if (state.cropMode) {
       this.previewViewMetrics = null;
@@ -72,7 +102,7 @@ export class CanvasRenderer {
     }
 
     this.cropViewMetrics = null;
-    const processed = createProcessedCanvas(state, { maxDimension: 1600 });
+    const processed = this.getProcessedPreview(state);
 
     if (!processed) {
       this.previewViewMetrics = null;
@@ -97,7 +127,109 @@ export class CanvasRenderer {
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(processed.canvas, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
     this.drawActiveTextSelection(ctx, state, processed.canvas.width, processed.canvas.height, imageRect);
+    this.drawBrushCursor(ctx, state, imageRect);
     this.drawInfo(ctx, imageRect, `${processed.canvas.width} × ${processed.canvas.height} · ${Math.round(state.viewport.zoom * 100)}%`);
+  }
+
+  private getProcessedPreview(state: EditorState): ProcessedPreview | null {
+    if (!state.image) {
+      return null;
+    }
+
+    const nextCacheKey = this.createProcessedPreviewCacheKey(state);
+
+    if (
+      this.processedPreviewCache &&
+      this.processedPreviewCache.image === nextCacheKey.image &&
+      this.processedPreviewCache.cropRectKey === nextCacheKey.cropRectKey &&
+      this.processedPreviewCache.preset === nextCacheKey.preset &&
+      this.processedPreviewCache.adjustmentsKey === nextCacheKey.adjustmentsKey &&
+      this.processedPreviewCache.transformKey === nextCacheKey.transformKey &&
+      this.processedPreviewCache.textsKey === nextCacheKey.textsKey &&
+      this.processedPreviewCache.brushStrokesKey === nextCacheKey.brushStrokesKey
+    ) {
+      return this.processedPreviewCache.result;
+    }
+
+    const processed = createProcessedCanvas(state, { maxDimension: 1600 });
+
+    if (!processed) {
+      return null;
+    }
+
+    this.processedPreviewCache = {
+      ...nextCacheKey,
+      result: processed,
+    };
+
+    return processed;
+  }
+
+  private createProcessedPreviewCacheKey(state: EditorState): Omit<ProcessedPreviewCache, 'result'> {
+    const textState = normalizeTextState(state);
+
+    return {
+      image: state.image,
+      cropRectKey: state.cropRect
+        ? `${state.cropRect.x},${state.cropRect.y},${state.cropRect.width},${state.cropRect.height}`
+        : 'full',
+      preset: state.activePreset,
+      adjustmentsKey: `${state.adjustments.contrast},${state.adjustments.exposure},${state.adjustments.highlights}`,
+      transformKey: `${state.transform.rotation},${state.transform.flipX ? 1 : 0},${state.transform.flipY ? 1 : 0}`,
+      textsKey: JSON.stringify(
+        textState.texts.map((text) => ({
+          id: text.id,
+          content: text.content,
+          xRatio: text.xRatio,
+          yRatio: text.yRatio,
+          fontSize: text.fontSize,
+          color: text.color,
+          align: text.align,
+          lineHeight: text.lineHeight,
+          rotation: text.rotation,
+        })),
+      ),
+      brushStrokesKey: JSON.stringify(
+        (state.brushStrokes ?? []).map((stroke) => {
+          const lastPoint = stroke.points[stroke.points.length - 1] ?? null;
+
+          return {
+            id: stroke.id,
+            type: stroke.type,
+            color: stroke.color,
+            size: stroke.size,
+            hardness: stroke.hardness,
+            pointsLength: stroke.points.length,
+            lastPoint,
+          };
+        }),
+      ),
+    };
+  }
+
+  private updateFrameStats(now = performance.now()): void {
+    const windowStart = now - 1000;
+    this.frameTimestamps.push(now);
+    this.frameTimestamps = this.frameTimestamps.filter((timestamp) => timestamp >= windowStart);
+
+    if (this.frameTimestamps.length < 2) {
+      return;
+    }
+
+    const firstTimestamp = this.frameTimestamps[0]!;
+    const lastTimestamp = this.frameTimestamps[this.frameTimestamps.length - 1]!;
+    const duration = lastTimestamp - firstTimestamp;
+
+    if (duration <= 0) {
+      return;
+    }
+
+    this.framesPerSecond = ((this.frameTimestamps.length - 1) * 1000) / duration;
+  }
+
+  private resetFrameStats(): void {
+    this.frameTimestamps = [];
+    this.framesPerSecond = null;
   }
 
   private prepareCanvas(): {
@@ -209,6 +341,66 @@ export class CanvasRenderer {
     ctx.fillText(text, rect.x + paddingX, baselineY + 4);
   }
 
+  private drawBrushCursor(ctx: CanvasRenderingContext2D, state: EditorState, imageRect: Rect): void {
+    if (!state.image || state.cropMode || state.activeTool !== 'brush' || !state.brushCursor || !this.previewViewMetrics) {
+      return;
+    }
+
+    const cropRect = state.cropRect ?? fullImageRect(state.image);
+
+    if (cropRect.width <= 0 || cropRect.height <= 0) {
+      return;
+    }
+
+    const processedSize = resolveProcessedCanvasSize(cropRect, { maxDimension: 1600 });
+    const cursorImageX = state.brushCursor.xRatio * state.image.width;
+    const cursorImageY = state.brushCursor.yRatio * state.image.height;
+    const workingX = ((cursorImageX - cropRect.x) / cropRect.width) * processedSize.width;
+    const workingY = ((cursorImageY - cropRect.y) / cropRect.height) * processedSize.height;
+
+    if (Number.isNaN(workingX) || Number.isNaN(workingY)) {
+      return;
+    }
+
+    const radians = (state.transform.rotation * Math.PI) / 180;
+    const centeredX = workingX - processedSize.width / 2;
+    const centeredY = workingY - processedSize.height / 2;
+    const rotatedX = centeredX * Math.cos(radians) - centeredY * Math.sin(radians);
+    const rotatedY = centeredX * Math.sin(radians) + centeredY * Math.cos(radians);
+    const sourceX = (state.transform.flipX ? -rotatedX : rotatedX) + this.previewViewMetrics.sourceWidth / 2;
+    const sourceY = (state.transform.flipY ? -rotatedY : rotatedY) + this.previewViewMetrics.sourceHeight / 2;
+
+    if (
+      sourceX < 0 ||
+      sourceY < 0 ||
+      sourceX > this.previewViewMetrics.sourceWidth ||
+      sourceY > this.previewViewMetrics.sourceHeight
+    ) {
+      return;
+    }
+
+    const brush = normalizeBrushSettings(state.brush);
+    const workingRadius =
+      Math.max(0.5, (brush.size * Math.min(processedSize.width / cropRect.width, processedSize.height / cropRect.height)) / 2);
+    const displayScale = Math.min(
+      imageRect.width / Math.max(this.previewViewMetrics.sourceWidth, Number.EPSILON),
+      imageRect.height / Math.max(this.previewViewMetrics.sourceHeight, Number.EPSILON),
+    );
+    const displayRadius = Math.max(4, workingRadius * displayScale);
+    const screenX = imageRect.x + (sourceX / this.previewViewMetrics.sourceWidth) * imageRect.width;
+    const screenY = imageRect.y + (sourceY / this.previewViewMetrics.sourceHeight) * imageRect.height;
+
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = brush.type === 'eraser' ? 'rgba(248, 250, 252, 0.92)' : 'rgba(248, 250, 252, 0.88)';
+    ctx.fillStyle = brush.type === 'eraser' ? 'rgba(15, 23, 42, 0.18)' : 'rgba(233, 192, 131, 0.1)';
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, displayRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private drawActiveTextSelection(
     ctx: CanvasRenderingContext2D,
     state: EditorState,
@@ -283,7 +475,6 @@ export class CanvasRenderer {
       imageRect,
       measureText,
     );
-    this.drawTextMoveHandle(ctx, resolveDragHandleScreenRect(screenRect));
 
     const topCenterScreenPoint = this.resolveTextTopCenterScreenPoint(
       activeText,
@@ -296,30 +487,6 @@ export class CanvasRenderer {
     if (rotatedHandlePoint && topCenterScreenPoint) {
       this.drawTextRotateHandle(ctx, topCenterScreenPoint, rotatedHandlePoint);
     }
-  }
-
-  private drawTextMoveHandle(ctx: CanvasRenderingContext2D, handleRect: Rect): void {
-    ctx.save();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-    ctx.strokeStyle = 'rgba(233, 192, 131, 0.9)';
-    ctx.lineWidth = 1.25;
-    ctx.fillRect(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
-    ctx.strokeRect(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
-    ctx.fillStyle = '#e9c083';
-
-    const dotRadius = 1.5;
-    const dotXs = [handleRect.x + 7, handleRect.x + handleRect.width / 2, handleRect.x + handleRect.width - 7];
-    const dotYs = [handleRect.y + 8, handleRect.y + handleRect.height - 8];
-
-    for (const dotY of dotYs) {
-      for (const dotX of dotXs) {
-        ctx.beginPath();
-        ctx.arc(dotX, dotY, dotRadius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    ctx.restore();
   }
 
   private drawTextRotateHandle(
@@ -495,12 +662,10 @@ export class CanvasRenderer {
   ): Rect {
     const width = baseRect.width * zoom;
     const height = baseRect.height * zoom;
-    const safeOffsetX = clampViewportOffset(offsetX, width, canvasWidth);
-    const safeOffsetY = clampViewportOffset(offsetY, height, canvasHeight);
 
     return {
-      x: (canvasWidth - width) / 2 + safeOffsetX,
-      y: (canvasHeight - height) / 2 + safeOffsetY,
+      x: (canvasWidth - width) / 2 + offsetX,
+      y: (canvasHeight - height) / 2 + offsetY,
       width,
       height,
     };

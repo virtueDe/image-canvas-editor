@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as imageProcessing from './image-processing';
 import { CanvasRenderer } from './renderer';
 import type { EditorState, Rect, TextItem } from './types';
 
@@ -49,6 +50,7 @@ const createTextState = (): EditorState => {
     cropRect: null,
     draftCropRect: null,
     cropMode: false,
+    activeTool: 'text',
     textOverlay: {
       text: text.content,
       xRatio: text.xRatio,
@@ -67,6 +69,17 @@ const createTextState = (): EditorState => {
       selectionEnd: text.content.length,
       composing: false,
     },
+    brush: {
+      type: 'brush',
+      color: '#E9C083',
+      size: 24,
+      hardness: 0.68,
+    },
+    brushStrokes: [],
+    brushToolState: {
+      mode: 'idle',
+    },
+    brushCursor: null,
     adjustments: {
       contrast: 0,
       exposure: 0,
@@ -87,6 +100,10 @@ const createTextState = (): EditorState => {
 };
 
 describe('canvas renderer text handles', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('draws the rotate handle for the active text while editing', () => {
     const renderer = new CanvasRenderer({} as HTMLCanvasElement);
     const rendererInternals = renderer as unknown as {
@@ -97,7 +114,6 @@ describe('canvas renderer text handles', () => {
         sourceHeight: number,
         imageRect: Rect,
       ) => void;
-      drawTextMoveHandle: (ctx: CanvasRenderingContext2D, rect: Rect) => void;
       drawTextRotateHandle: (
         ctx: CanvasRenderingContext2D,
         startPoint: { x: number; y: number },
@@ -106,7 +122,6 @@ describe('canvas renderer text handles', () => {
     };
     let rotateHandleDrawn = false;
 
-    rendererInternals.drawTextMoveHandle = () => undefined;
     rendererInternals.drawTextRotateHandle = () => {
       rotateHandleDrawn = true;
     };
@@ -120,5 +135,81 @@ describe('canvas renderer text handles', () => {
     );
 
     expect(rotateHandleDrawn).toBe(true);
+  });
+
+  it('tracks frames per second from recent render timestamps', () => {
+    const renderer = new CanvasRenderer({} as HTMLCanvasElement);
+    const rendererInternals = renderer as unknown as {
+      updateFrameStats: (now: number) => void;
+    };
+
+    rendererInternals.updateFrameStats(0);
+    rendererInternals.updateFrameStats(16);
+    rendererInternals.updateFrameStats(32);
+    rendererInternals.updateFrameStats(48);
+
+    expect(renderer.getFramesPerSecond()).toBeCloseTo(62.5, 1);
+  });
+
+  it('reuses processed canvas cache when only viewport changes', () => {
+    const renderer = new CanvasRenderer({} as HTMLCanvasElement);
+    const rendererInternals = renderer as unknown as {
+      getProcessedPreview: (state: EditorState) => unknown;
+    };
+    const processed = {
+      canvas: {} as HTMLCanvasElement,
+      cropRect: { x: 0, y: 0, width: 1200, height: 800 },
+    };
+    const createProcessedCanvasSpy = vi
+      .spyOn(imageProcessing, 'createProcessedCanvas')
+      .mockReturnValue(processed);
+    const baseState = createTextState();
+
+    rendererInternals.getProcessedPreview(baseState);
+    rendererInternals.getProcessedPreview({
+      ...baseState,
+      viewport: {
+        zoom: 2,
+        offsetX: 180,
+        offsetY: -60,
+      },
+    });
+
+    expect(createProcessedCanvasSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates processed canvas cache when brush strokes change', () => {
+    const renderer = new CanvasRenderer({} as HTMLCanvasElement);
+    const rendererInternals = renderer as unknown as {
+      getProcessedPreview: (state: EditorState) => unknown;
+    };
+    const processed = {
+      canvas: {} as HTMLCanvasElement,
+      cropRect: { x: 0, y: 0, width: 1200, height: 800 },
+    };
+    const createProcessedCanvasSpy = vi
+      .spyOn(imageProcessing, 'createProcessedCanvas')
+      .mockReturnValue(processed);
+    const baseState = createTextState();
+
+    rendererInternals.getProcessedPreview(baseState);
+    rendererInternals.getProcessedPreview({
+      ...baseState,
+      brushStrokes: [
+        {
+          id: 'stroke-1',
+          type: 'brush',
+          color: '#E9C083',
+          size: 24,
+          hardness: 0.68,
+          points: [
+            { xRatio: 0.2, yRatio: 0.3 },
+            { xRatio: 0.25, yRatio: 0.35 },
+          ],
+        },
+      ],
+    });
+
+    expect(createProcessedCanvasSpy).toHaveBeenCalledTimes(2);
   });
 });

@@ -21,6 +21,14 @@ type TextEditorBridge = Pick<
   | 'updateActiveTextRotation'
   | 'commitActiveTextRotation'
 >;
+type BrushEditorBridge = Pick<
+  ImageCanvasEditor,
+  | 'selectBrushTool'
+  | 'updateBrushType'
+  | 'updateBrushColor'
+  | 'updateBrushSize'
+  | 'updateBrushHardness'
+>;
 type EditorTextItem = NonNullable<EditorState['texts']>[number];
 
 const TEXT_PRESET_COLORS = [
@@ -46,6 +54,7 @@ export const useImageEditor = () => {
     return editorRef.value;
   };
   const getTextEditor = (): TextEditorBridge => getEditor();
+  const getBrushEditor = (): BrushEditorBridge => getEditor();
 
   const renderState = computed(() => state.value);
   const hasImage = computed(() => Boolean(renderState.value.image));
@@ -57,9 +66,20 @@ export const useImageEditor = () => {
   const activeTextRotation = computed(() => activeText.value?.rotation ?? 0);
   const isTextInserting = computed(() => renderState.value.textToolState.mode === 'inserting');
   const isTextEditing = computed(() => renderState.value.textToolState.mode === 'editing');
+  const isBrushActive = computed(() => renderState.value.activeTool === 'brush');
   const hiddenTextareaValue = computed(() => activeText.value?.content ?? '');
   const rotationText = computed(() => `${Math.round(renderState.value.transform.rotation)}°`);
   const zoomText = computed(() => `${Math.round(renderState.value.viewport.zoom * 100)}%`);
+  const fpsText = computed(() => {
+    renderState.value;
+
+    if (!hasImage.value) {
+      return '--';
+    }
+
+    const fps = editorRef.value?.getRenderFps() ?? null;
+    return fps === null ? '--' : `${Math.round(fps)} FPS`;
+  });
   const canApplyCrop = computed(
     () => Boolean(renderState.value.image && renderState.value.cropMode && (renderState.value.draftCropRect ?? renderState.value.cropRect)),
   );
@@ -92,6 +112,11 @@ export const useImageEditor = () => {
     return `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
   });
   const activeTextFontSize = computed(() => activeText.value?.fontSize ?? 48);
+  const brushSettings = computed(() => renderState.value.brush);
+  const activeBrushType = computed(() => brushSettings.value?.type ?? 'brush');
+  const activeBrushColor = computed(() => brushSettings.value?.color ?? '#E9C083');
+  const activeBrushSize = computed(() => brushSettings.value?.size ?? 24);
+  const activeBrushHardness = computed(() => Math.round((brushSettings.value?.hardness ?? 0.68) * 100));
   const textHint = computed(() => {
     if (!hasImage.value) {
       return '先上传图片，再添加一段文字。';
@@ -106,14 +131,29 @@ export const useImageEditor = () => {
     }
 
     if (isTextEditing.value) {
-      return '正在直接编辑文字，点击空白区域结束本次编辑。';
+      return '正在编辑文字；完成后单击选中，双击再次进入编辑。';
     }
 
     if (hasActiveText.value) {
-      return '当前对象已选中，可点击文字继续编辑，拖动方形手柄移动位置，拖动圆形手柄旋转角度。';
+      return '当前对象已选中；拖拽文字本体移动，双击文字进入编辑，拖动圆形手柄旋转角度。';
     }
 
     return '点击左侧文字按钮进入插入态，再在画布中落点创建文字。';
+  });
+  const brushHint = computed(() => {
+    if (!hasImage.value) {
+      return '先上传图片，再启用画笔。';
+    }
+
+    if (renderState.value.cropMode) {
+      return '裁剪模式下暂不支持画笔。';
+    }
+
+    if (isBrushActive.value) {
+      return '画笔模式：在图片区域拖拽即可绘制，滚轮仍可缩放，撤销会按整笔回退。';
+    }
+
+    return '点击左侧画笔按钮进入独立画笔图层模式。';
   });
 
   const imageMetaRows = computed(() => {
@@ -122,6 +162,8 @@ export const useImageEditor = () => {
       ? '等待上传图片'
       : renderState.value.cropMode
         ? '正在裁剪'
+        : isBrushActive.value
+          ? '正在绘制画笔图层'
         : isTextEditing.value
           ? '正在编辑文字'
           : isTextInserting.value
@@ -230,6 +272,21 @@ export const useImageEditor = () => {
   };
   const startTextInsertion = (): void => {
     getTextEditor().startTextInsertion();
+  };
+  const selectBrushTool = (): void => {
+    getBrushEditor().selectBrushTool();
+  };
+  const updateBrushType = (type: 'pencil' | 'brush' | 'pen' | 'eraser'): void => {
+    getBrushEditor().updateBrushType(type);
+  };
+  const updateBrushColor = (color: string): void => {
+    getBrushEditor().updateBrushColor(color);
+  };
+  const updateBrushSize = (size: number): void => {
+    getBrushEditor().updateBrushSize(size);
+  };
+  const updateBrushHardness = (hardness: number): void => {
+    getBrushEditor().updateBrushHardness(hardness);
   };
   const removeTextOverlay = (): void => {
     getTextEditor().removeTextOverlay();
@@ -365,12 +422,19 @@ export const useImageEditor = () => {
     activeTextRotation,
     isTextInserting,
     isTextEditing,
+    isBrushActive,
     hiddenTextareaValue,
     canEditText,
     textHint,
+    brushHint,
     activeTextFontSize,
+    activeBrushType,
+    activeBrushColor,
+    activeBrushSize,
+    activeBrushHardness,
     rotationText,
     zoomText,
+    fpsText,
     canApplyCrop,
     canCancelCrop,
     canUndo,
@@ -389,6 +453,11 @@ export const useImageEditor = () => {
     updateActiveTextRotation,
     commitActiveTextRotation,
     startTextInsertion,
+    selectBrushTool,
+    updateBrushType,
+    updateBrushColor,
+    updateBrushSize,
+    updateBrushHardness,
     removeTextOverlay,
     replaceActiveTextContent,
     onHiddenTextareaInput,
