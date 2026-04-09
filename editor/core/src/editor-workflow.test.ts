@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ImageCanvasEditor } from './editor';
+import { resolveTextRotateHandleScreenPoint } from './text-engine';
 
 describe('multi-text editor workflow', () => {
   it('creates a text item after insertion placement', () => {
@@ -227,12 +228,132 @@ describe('multi-text editor workflow', () => {
     expect(editor.getState().texts).toHaveLength(0);
   });
 
+  it('starts text rotation from the rotate handle while editing', () => {
+    const editor = new ImageCanvasEditor();
+    const editorInternals = editor as unknown as {
+      canvas: {
+        getBoundingClientRect: () => DOMRect;
+        setPointerCapture: (pointerId: number) => void;
+        style: {
+          cursor: string;
+        };
+      };
+      renderer: {
+        getCropViewMetrics: () => null;
+        render: () => void;
+        getPreviewViewMetrics: () => {
+          displayX: number;
+          displayY: number;
+          displayWidth: number;
+          displayHeight: number;
+          sourceWidth: number;
+          sourceHeight: number;
+        };
+      };
+      store: {
+        setState: (updater: ReturnType<ImageCanvasEditor['getState']>) => void;
+      };
+      onCanvasPointerDown: (event: PointerEvent) => void;
+    };
+    const previewMetrics = {
+      displayX: 0,
+      displayY: 0,
+      displayWidth: 1000,
+      displayHeight: 800,
+      sourceWidth: 1000,
+      sourceHeight: 800,
+    };
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.5, 0.5);
+    editor.insertText('标题');
+
+    editorInternals.store.setState({
+      ...editor.getState(),
+      image: {
+        element: {} as HTMLImageElement,
+        width: previewMetrics.sourceWidth,
+        height: previewMetrics.sourceHeight,
+        name: 'mock.png',
+        dataUrl: 'data:image/png;base64,mock',
+      },
+    });
+    editorInternals.canvas = {
+      getBoundingClientRect: () => ({ left: 0, top: 0 } as DOMRect),
+      setPointerCapture: () => undefined,
+      style: {
+        cursor: 'default',
+      },
+    };
+    editorInternals.renderer = {
+      getCropViewMetrics: () => null,
+      render: () => undefined,
+      getPreviewViewMetrics: () => previewMetrics,
+    };
+
+    const activeText = editor.getState().texts[0]!;
+    const rotateHandlePoint = resolveTextRotateHandleScreenPoint(
+      activeText,
+      previewMetrics.sourceWidth,
+      previewMetrics.sourceHeight,
+      {
+        x: previewMetrics.displayX,
+        y: previewMetrics.displayY,
+        width: previewMetrics.displayWidth,
+        height: previewMetrics.displayHeight,
+      },
+    );
+
+    expect(rotateHandlePoint).not.toBeNull();
+
+    editorInternals.onCanvasPointerDown({
+      button: 0,
+      pointerId: 1,
+      clientX: rotateHandlePoint!.x,
+      clientY: rotateHandlePoint!.y,
+    } as PointerEvent);
+
+    expect(editor.getState().textToolState).toMatchObject({
+      mode: 'rotating',
+      textId: activeText.id,
+    });
+  });
+
   it('deletes an empty text when editing finishes', () => {
     const editor = new ImageCanvasEditor();
 
     editor.startTextInsertion();
     editor.placeTextAt(0.5, 0.5);
     editor.finishTextEditing();
+
+    expect(editor.getState().texts).toEqual([]);
+  });
+
+  it('keeps in-progress text content when inspector updates text styles', () => {
+    const editor = new ImageCanvasEditor();
+
+    editor.startTextInsertion();
+    editor.placeTextAt(0.5, 0.5);
+    editor.replaceActiveTextContent('标题', 2, 2);
+
+    editor.updateTextOverlayFontSize(72);
+    editor.updateTextOverlayColor('#ff5500');
+    editor.commitActiveTextRotation(45);
+
+    expect(editor.getState().texts[0]).toMatchObject({
+      content: '标题',
+      fontSize: 72,
+      color: '#ff5500',
+      rotation: 45,
+    });
+    expect(editor.getState().textToolState).toMatchObject({
+      mode: 'editing',
+      selectionStart: 2,
+      selectionEnd: 2,
+    });
+
+    editor.finishTextEditing();
+    editor.undo();
 
     expect(editor.getState().texts).toEqual([]);
   });

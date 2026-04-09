@@ -8,7 +8,7 @@ import {
   toScreenTextPoint,
 } from './text-engine';
 import { normalizeTextState, type CropViewMetrics, type EditorState, type PreviewViewMetrics, type Rect } from './types';
-import { clamp, fullImageRect } from './utils';
+import { clampViewportOffset, fullImageRect } from './utils';
 
 const HANDLE_SIZE = 10;
 const TEXT_SELECTION_PADDING = 6;
@@ -285,18 +285,16 @@ export class CanvasRenderer {
     );
     this.drawTextMoveHandle(ctx, resolveDragHandleScreenRect(screenRect));
 
-    if (!(textState.textToolState.mode === 'editing' && textState.textToolState.textId === activeText.id)) {
-      const topCenterScreenPoint = this.resolveTextTopCenterScreenPoint(
-        activeText,
-        sourceWidth,
-        sourceHeight,
-        imageRect,
-        measureText,
-      );
+    const topCenterScreenPoint = this.resolveTextTopCenterScreenPoint(
+      activeText,
+      sourceWidth,
+      sourceHeight,
+      imageRect,
+      measureText,
+    );
 
-      if (rotatedHandlePoint && topCenterScreenPoint) {
-        this.drawTextRotateHandle(ctx, topCenterScreenPoint, rotatedHandlePoint);
-      }
+    if (rotatedHandlePoint && topCenterScreenPoint) {
+      this.drawTextRotateHandle(ctx, topCenterScreenPoint, rotatedHandlePoint);
     }
   }
 
@@ -497,10 +495,8 @@ export class CanvasRenderer {
   ): Rect {
     const width = baseRect.width * zoom;
     const height = baseRect.height * zoom;
-    const maxOffsetX = Math.max(0, (width - baseRect.width) / 2);
-    const maxOffsetY = Math.max(0, (height - baseRect.height) / 2);
-    const safeOffsetX = clamp(offsetX, -maxOffsetX, maxOffsetX);
-    const safeOffsetY = clamp(offsetY, -maxOffsetY, maxOffsetY);
+    const safeOffsetX = clampViewportOffset(offsetX, width, canvasWidth);
+    const safeOffsetY = clampViewportOffset(offsetY, height, canvasHeight);
 
     return {
       x: (canvasWidth - width) / 2 + safeOffsetX,

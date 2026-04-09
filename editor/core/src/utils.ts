@@ -3,6 +3,15 @@ import type { ImageResource, Rect } from './types';
 export const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
+export const clampViewportOffset = (
+  offset: number,
+  displaySize: number,
+  canvasSize: number,
+): number => {
+  const maxOffset = Math.abs(canvasSize - displaySize) / 2;
+  return clamp(offset, -maxOffset, maxOffset);
+};
+
 export const fullImageRect = (image: ImageResource): Rect => ({
   x: 0,
   y: 0,

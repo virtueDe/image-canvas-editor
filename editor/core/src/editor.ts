@@ -34,6 +34,7 @@ import {
 import {
   approximatelyFullRect,
   clamp,
+  clampViewportOffset,
   fullImageRect,
   loadImageFromDataUrl,
   normalizeRect,
@@ -241,8 +242,6 @@ const resolveTextHitTarget = (
 
     if (activeTextRect) {
       const moveHandleRect = resolveDragHandleScreenRect(activeTextRect);
-      const isEditingActiveText =
-        textState.textToolState.mode === 'editing' && textState.textToolState.textId === activeText.id;
       const rotatedHandlePoint = resolveTextRotateHandleScreenPoint(
         activeText,
         metrics.sourceWidth,
@@ -250,7 +249,7 @@ const resolveTextHitTarget = (
         displayRect,
       );
       const rotateHandleRect =
-        !isEditingActiveText && rotatedHandlePoint
+        rotatedHandlePoint
           ? createCenteredRect(rotatedHandlePoint.x, rotatedHandlePoint.y, ROTATED_TEXT_HANDLE_SIZE)
           : null;
 
@@ -1135,7 +1134,7 @@ export class ImageCanvasEditor {
       return;
     }
 
-    this.commitChange((currentState) => {
+    this.applyTextInspectorChange((currentState) => {
       const currentTextState = normalizeTextState(currentState);
       const nextTexts = currentTextState.texts.filter((text) => text.id !== currentTextState.activeTextId);
 
@@ -1143,7 +1142,7 @@ export class ImageCanvasEditor {
         ...currentState,
         ...this.createTextStatePatch(nextTexts, nextTexts[0]?.id ?? null, createIdleTextToolState()),
       };
-    });
+    }, { commitPreviewWhenEditing: true });
   }
 
   updateTextOverlayText(text: string): void {
@@ -1153,7 +1152,7 @@ export class ImageCanvasEditor {
       return;
     }
 
-    this.commitChange((currentState) => {
+    this.applyTextInspectorChange((currentState) => {
       const currentTextState = normalizeTextState(currentState);
       const nextTexts = currentTextState.texts.map((item) =>
         item.id === currentTextState.activeTextId
@@ -1178,7 +1177,7 @@ export class ImageCanvasEditor {
       return;
     }
 
-    this.commitChange((currentState) => {
+    this.applyTextInspectorChange((currentState) => {
       const currentTextState = normalizeTextState(currentState);
       const activeText = currentTextState.texts.find((item) => item.id === currentTextState.activeTextId);
 
@@ -1217,7 +1216,7 @@ export class ImageCanvasEditor {
       return;
     }
 
-    this.commitChange((currentState) => {
+    this.applyTextInspectorChange((currentState) => {
       const currentTextState = normalizeTextState(currentState);
       const nextTexts = currentTextState.texts.map((item) =>
         item.id === currentTextState.activeTextId
@@ -1252,7 +1251,7 @@ export class ImageCanvasEditor {
       return;
     }
 
-    this.commitChange((currentState) => this.resolveActiveTextRotationState(currentState, rotation));
+    this.applyTextInspectorChange((currentState) => this.resolveActiveTextRotationState(currentState, rotation));
   }
 
   updateRotation(rotation: number): void {
@@ -1760,6 +1759,26 @@ export class ImageCanvasEditor {
     };
   }
 
+  private applyTextInspectorChange(
+    updater: (currentState: EditorState) => EditorState,
+    options: { commitPreviewWhenEditing?: boolean } = {},
+  ): void {
+    const textState = normalizeTextState(this.store.getState());
+    const isEditingText = textState.textToolState.mode === 'editing';
+
+    if (!isEditingText) {
+      this.commitChange(updater);
+      return;
+    }
+
+    if (options.commitPreviewWhenEditing) {
+      this.commitPreviewState(updater);
+      return;
+    }
+
+    this.previewChange(updater);
+  }
+
   private stabilizeEmptyTextAnchor(text: TextItem, nextContent: string): TextItem {
     const previewMetrics = this.renderer?.getPreviewViewMetrics() ?? null;
     const sourceWidth = previewMetrics?.sourceWidth ?? this.store.getState().image?.width ?? 0;
@@ -1854,13 +1873,11 @@ export class ImageCanvasEditor {
   ): EditorState['viewport'] {
     const width = metrics.baseDisplayWidth * viewport.zoom;
     const height = metrics.baseDisplayHeight * viewport.zoom;
-    const maxOffsetX = Math.max(0, (width - metrics.baseDisplayWidth) / 2);
-    const maxOffsetY = Math.max(0, (height - metrics.baseDisplayHeight) / 2);
 
     return {
       zoom: viewport.zoom,
-      offsetX: clamp(viewport.offsetX, -maxOffsetX, maxOffsetX),
-      offsetY: clamp(viewport.offsetY, -maxOffsetY, maxOffsetY),
+      offsetX: clampViewportOffset(viewport.offsetX, width, metrics.canvasWidth),
+      offsetY: clampViewportOffset(viewport.offsetY, height, metrics.canvasHeight),
     };
   }
 
